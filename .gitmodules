@@ -1,0 +1,8 @@
+[submodule "submodules/SubaruDefs"]
+	path = submodules/SubaruDefs
+	url = https://github.com/Shamtam/SubaruDefs.git
+	branch = Alpha
+[submodule "submodules/python_j2534"]
+	path = submodules/python_j2534
+	url = https://github.com/Shamtam/python_j2534.git
+	branch = master
