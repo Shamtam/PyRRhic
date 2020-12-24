@@ -30,6 +30,8 @@ class DefinitionManager(object):
 
     def __init__(self, ecuflashRoot=None):
         self._ecuflash_defs = {}
+        self._ecuflash_defs_by_hex = None
+        self._ecuflash_defs_by_str = None
         self._rrlogger_defs = {}
 
         if ecuflashRoot and os.path.isdir(ecuflashRoot):
@@ -44,6 +46,9 @@ class DefinitionManager(object):
         """
 
         self._ecuflash_defs = {}
+        self._ecuflash_defs_by_hex = None
+        self._ecuflash_defs_by_str = None
+
         _fpaths = {}
 
         _logger.info('Loading ECUFlash repository located at {}'.format(directory))
@@ -121,6 +126,15 @@ class DefinitionManager(object):
                     )
                 )
 
+        self._ecuflash_defs_by_hex = {
+            d.Info['internalidhex'].upper(): d for d in self._ecuflash_defs.values()
+            if d.Info['internalidhex'] is not None
+        }
+        self._ecuflash_defs_by_str = {
+            d.Info['internalidstring'].upper(): d for d in self._ecuflash_defs.values()
+            if d.Info['internalidstring'] is not None
+        }
+
         _logger.info(
             'Finished loading {} ECUFlash definitions'.format(
                 len(self._ecuflash_defs)
@@ -129,8 +143,40 @@ class DefinitionManager(object):
 
     @property
     def ECUFlashDefs(self):
-        "`dict` containing {`xmlid`: `<ECUFlashDef>`} key-val pairs"
+        "`dict` of {`xmlid`: `<ECUFlashDef>`} key-val pairs"
         return self._ecuflash_defs
+
+    @property
+    def ECUFlashDefsByHex(self):
+        "`dict` of {`internalidhex`: `<ECUFlashDef>`} key-val pairs"
+        return self._ecuflash_defs_by_hex
+
+    @property
+    def ECUFlashDefsByString(self):
+        "`dict` of {`internalidstring`: `<ECUFlashDef>`} key-val pairs"
+        return self._ecuflash_defs_by_str
+
+    @property
+    def UniqueInternalIDAddrs(self):
+        "`set` of all `internalidaddress` values in the ECUFlash repository"
+        return set([
+            int(x.Info['internalidaddress'], base=16) for x in self._ecuflash_defs.values()
+            if x.Info['internalidaddress'] is not None
+        ])
+
+    @property
+    def UniqueHexIDLengths(self):
+        "`set` of all lengths of `internalidhex`s in the ECUFlash repository"
+        return set([len(x)//2 for x in self._ecuflash_defs_by_hex.keys()])
+
+    @property
+    def UniqueStringIDLengths(self):
+        "`set` of all lengths of `internalidstring`s in the ECUFlash repository"
+        return set([len(x) for x in self._ecuflash_defs_by_str.keys()])
+
+    @property
+    def IsValid(self):
+        return bool(self._ecuflash_defs)
 
 class ECUFlashDef(object):
     """
@@ -149,14 +195,14 @@ class ECUFlashDef(object):
      - identifier - Unique identification string for this def
 
     Keywords [Default]:
-    - parents [ {} ] - `dict` of `ECUFlashDef`s keyed by their unique identifier.
+    - parents [`{}`] - `dict` of `ECUFlashDef`s keyed by their unique identifier.
         If the value is `None`, it will be resolved during dependency resolution.
 
-    - scalings [ {} ] - `dict` of scaling definitions. The dict should be keyed
+    - scalings [`{}`] - `dict` of scaling definitions. The dict should be keyed
         by the name of the corresponding scaling, and the value for each key
         is a `Scaling`.
 
-    - tables [ {} ] - `dict` of table definitions. Each element can either be
+    - tables [`{}`] - `dict` of table definitions. Each element can either be
         a `Table`, or a dictionary containing the necessary elements to
         instantiate a `Table` during dependency resolution.
     """
@@ -172,8 +218,10 @@ class ECUFlashDef(object):
         self._scalings = kwargs.pop('scalings', {})
         self._tables = kwargs.pop('tables', {})
 
+        self._all_scalings = {}
+        self._all_tables = {}
+
         self._info = {
-            'internalidaddress': None,
             'internalidaddress': None,
             'internalidstring': None,
             'internalidhex': None,
@@ -221,7 +269,7 @@ class ECUFlashDef(object):
 
         # determine axis data type
         if 'scaling' in ax.attrib:
-            ax_kw['Scaling'] = self._scalings[ax.attrib['scaling']]
+            ax_kw['Scaling'] = self._all_scalings[ax.attrib['scaling']]
             xml_scaling = ax_kw['Scaling'].xml
             ax_kw['Datatype'] = _ecuflash_to_dtype_map[
                 xml_scaling.attrib['storagetype']
@@ -311,7 +359,7 @@ class ECUFlashDef(object):
         # it specifically
         scaling_name = None if scaling_name == 'ChecksumFix' else scaling_name
 
-        scaling = self._scalings.get(scaling_name, None)
+        scaling = self._all_scalings.get(scaling_name, None)
         dtype = (
             _ecuflash_to_dtype_map[scaling.xml.attrib['storagetype']]
             if scaling is not None else None
@@ -414,12 +462,14 @@ class ECUFlashDef(object):
             scale = self._scalings[s]
             self._scalings[s] = self._scaling_from_xml(scale)
 
+        self._all_scalings = {k: v for k, v in self._scalings.items()}
+
         # add all scalings from all parents to this definition
         if self._parents:
             for parent in reversed(self._parents.values()):
-                for sname, sc in parent.Scalings.items():
-                    if sname not in self._scalings:
-                        self._scalings[sname] = sc
+                for sname, sc in parent.AllScalings.items():
+                    if sname not in self._all_scalings:
+                        self._all_scalings[sname] = sc
 
         # resolve tables
         table_names = list(filter(
@@ -482,6 +532,15 @@ class ECUFlashDef(object):
 
             self._tables[t] = table
 
+        self._all_tables = {k: v for k, v in self._tables.items()}
+
+        # add all tables from all parents to this definition
+        if self._parents:
+            for parent in reversed(self._parents.values()):
+                for tname, tab in parent.AllTables.items():
+                    if tname not in self._all_tables:
+                        self._all_tables[tname] = tab
+
         self._initialized = True
 
     @property
@@ -501,5 +560,13 @@ class ECUFlashDef(object):
         return self._scalings
 
     @property
+    def AllScalings(self):
+        return self._all_scalings
+
+    @property
     def Tables(self):
         return self._tables
+
+    @property
+    def AllTables(self):
+        return self._all_tables

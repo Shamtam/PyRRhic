@@ -19,8 +19,12 @@ import threading
 
 _logger = logging.getLogger(__name__)
 
+from .common.rom import Rom
 from .common.preferences import PreferenceManager
 from .common.definitions import DefinitionManager
+
+class DefinitionFound(Exception):
+    pass
 
 class PyrrhicController(object):
     "Top-level application controller"
@@ -29,6 +33,59 @@ class PyrrhicController(object):
         self._frame = frame
         self._prefs = PreferenceManager()
         self._defmgr = DefinitionManager()
+
+        self._roms = {}
+
+    def open_rom(self, fpath):
+        "Load the given filepath as a ROM image"
+
+        if fpath in self._roms:
+            # TODO: push status notification indicating ROM already loaded
+            return
+
+        rom, defn = None, None
+
+        # load raw image bytes
+        with open(fpath, 'rb') as fp:
+            rom_bytes = fp.read()
+
+        # inspect bytes at all internal ID addresses specified in definitions
+        for addr in self._defmgr.UniqueInternalIDAddrs:
+
+            try:
+
+                # check for a matching hex ID
+                for id_length in self._defmgr.UniqueHexIDLengths:
+                    id_bytes = rom_bytes[addr:addr+id_length]
+                    id_str = id_bytes.hex().upper()
+
+                    if id_str in self._defmgr.ECUFlashDefsByHex:
+                        defn = self._defmgr.ECUFlashDefsByHex[id_str]
+                        raise DefinitionFound
+
+                # check for matching string ID
+                for id_length in self._defmgr.UniqueStringIDLengths:
+
+                    try:
+                        id_str = rom_bytes[addr:addr+id_length].decode('ascii').upper()
+                    except UnicodeDecodeError:
+                        continue
+
+                    if id_str in self._defmgr.ECUFlashDefsByString:
+                        defn = self._defmgr.ECUFlashDefsByString[id_str]
+                        raise DefinitionFound
+
+            except DefinitionFound:
+                self._roms[fpath] = Rom(fpath, rom_bytes, defn)
+                return
+
+            except Exception as e:
+                raise
+
+        self._frame.error_box(
+            'Undefined ROM',
+            'Unable to find matching definition for ROM'
+        )
 
     def process_preferences(self):
         "Resolve state after any preference changes"
@@ -40,3 +97,7 @@ class PyrrhicController(object):
     @property
     def Preferences(self):
         return self._prefs
+
+    @property
+    def DefsValid(self):
+        return self._defmgr.IsValid

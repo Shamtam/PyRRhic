@@ -20,6 +20,7 @@ from ..controller import PyrrhicController
 
 from .base import MainFrame as bMainFrame
 from .PrefsDialog import PrefsDialog
+from .wxutils import modal_dialog_ok
 
 _logger = logging.getLogger(__name__)
 
@@ -33,9 +34,42 @@ class MainFrame(bMainFrame):
     # to avoid exception being thrown on close due to AUI manager deletion
         pass
 
+    def info_box(self, title, message):
+        modal_dialog_ok(self, title, message, wx.ICON_INFORMATION)
+
+    def warning_box(self, title, message):
+        modal_dialog_ok(self, title, message, wx.ICON_WARNING)
+
+    def error_box(self, title, message):
+        modal_dialog_ok(self, title, message, wx.ICON_ERROR)
+
     def OnClose(self, event):
         self.m_mgr.UnInit()
         event.Skip()
+
+    def OnOpenRom(self, event):
+        if not self._controller.DefsValid:
+            modal_dialog_ok(
+                self,
+                'No definitions loaded! Please ensure definition paths are correct',
+                'No Definitions Loaded',
+                wx.ICON_WARNING
+            )
+            return
+
+        dlg = wx.FileDialog(self,
+            'Open ROM File',
+            wildcard='Binary ROM Image (*.hex; *.bin)|*.hex;*.bin|All Files|*.*',
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE
+        )
+        result = dlg.ShowModal()
+
+        if result == wx.ID_OK:
+            fpaths = dlg.GetPaths()
+
+            for fpath in fpaths:
+                # TODO: sanity check files here?
+                self._controller.open_rom(fpath)
 
     def OnPreferences(self, event):
         dlg = PrefsDialog(self, self._controller.Preferences)
