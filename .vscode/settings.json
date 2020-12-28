@@ -1,0 +1,14 @@
+{
+    "python.pythonPath": "venv\\Scripts\\python.exe",
+    "editor.rulers": [
+        72,
+        79
+    ],
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "diffEditor.ignoreTrimWhitespace": false,
+    "files.trimTrailingWhitespace": true,
+    "editor.useTabStops": true
+}

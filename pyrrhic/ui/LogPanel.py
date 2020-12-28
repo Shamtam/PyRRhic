@@ -14,37 +14,19 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import wx
-from logging import Formatter, getLogger, CRITICAL, ERROR, WARNING, INFO, DEBUG
+from logging import getLogger, CRITICAL, ERROR, WARNING, INFO, DEBUG
 
+from ..common.logging import _console_formatter, _lvl_map
 from .panelsBase import bLogPanel
 from .wxutils import WxEventLogHandler, EVT_LOG
-
-_std_formatter = Formatter(
-    '{module}/{funcName}: {message}',
-    '%H:%M:%S',
-    style='{'
-)
-
-_debug_formatter = Formatter(
-    '{module}/{funcName} [{filename}:{lineno}]: {message}',
-    '%H:%M:%S',
-    style='{'
-)
 
 class LogPanel(bLogPanel):
     def __init__(self, *args, **kwargs):
         super(LogPanel, self).__init__(*args, **kwargs)
-        self._handler = WxEventLogHandler(self)
+        self._handler = WxEventLogHandler(self, _console_formatter)
         getLogger().addHandler(self._handler)
-
-        _lvl_map = {
-            CRITICAL: 0,
-            ERROR   : 1,
-            WARNING : 2,
-            INFO    : 3,
-            DEBUG   : 4,
-        }
-        log_lvl = _lvl_map[getLogger().getEffectiveLevel()]
+        self._handler.setLevel(INFO)
+        log_lvl = _lvl_map[self._handler.level]
         self._log_level.SetSelection(log_lvl)
 
         self.Bind(EVT_LOG, self.OnLogRecord)
@@ -64,21 +46,14 @@ class LogPanel(bLogPanel):
 
         _lvl_to_color = lambda x: self.Parent.Controller.Preferences[_color_pref_map[x]].ValueTuple
         style = wx.TextAttr(_lvl_to_color(lvl))
-
-        start_pos = self._log_text.GetLastPosition()
+        self._log_text.SetDefaultStyle(style)
         self._log_text.AppendText('{}\n'.format(msg))
-        end_pos = self._log_text.GetLastPosition()
-
-        self._log_text.SetStyle(start_pos, end_pos, style)
-        self._log_text.ShowPosition(end_pos)
+        self._log_text.ShowPosition(self._log_text.GetLastPosition())
 
     def OnSetLogLevel(self, event):
         _lvl_map = [CRITICAL, ERROR, WARNING, INFO, DEBUG]
         lvl = _lvl_map[self._log_level.GetSelection()]
-        getLogger().setLevel(lvl)
-
-        fmt = _debug_formatter if lvl < INFO else _std_formatter
-        self._handler.setFormatter(fmt)
+        self._handler.setLevel(lvl)
 
     def OnClearLog(self, event):
         self._log_text.Clear()

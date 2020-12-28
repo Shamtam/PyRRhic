@@ -7,8 +7,11 @@
 ## PLEASE DO *NOT* EDIT THIS FILE!
 ###########################################################################
 
+from wx import ScrolledWindow
 import wx
 import wx.xrc
+import wx.dataview
+import wx.grid
 
 ###########################################################################
 ## Class bLogPanel
@@ -16,7 +19,7 @@ import wx.xrc
 
 class bLogPanel ( wx.Panel ):
 
-    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( 500,300 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
         wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
 
         _sizer = wx.GridBagSizer( 0, 0 )
@@ -43,8 +46,10 @@ class bLogPanel ( wx.Panel ):
 
         self.SetSizer( _sizer )
         self.Layout()
+        _sizer.Fit( self )
 
         # Connect Events
+        self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClosePane )
         self._log_level.Bind( wx.EVT_RADIOBOX, self.OnSetLogLevel )
         self._log_but_clear.Bind( wx.EVT_BUTTON, self.OnClearLog )
 
@@ -53,10 +58,175 @@ class bLogPanel ( wx.Panel ):
 
 
     # Virtual event handlers, overide them in your derived class
+    def OnClosePane( self, event ):
+        event.Skip()
+
     def OnSetLogLevel( self, event ):
         event.Skip()
 
     def OnClearLog( self, event ):
+        event.Skip()
+
+
+###########################################################################
+## Class bTreePanel
+###########################################################################
+
+class bTreePanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
+        self._dvc.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+
+        _sizer.Add( self._dvc, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 1 ), wx.EXPAND, 5 )
+
+
+        _sizer.AddGrowableCol( 0 )
+        _sizer.AddGrowableRow( 0 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+        # Connect Events
+        self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClosePane )
+        self._dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_ACTIVATED, self.OnToggle, id = wx.ID_ANY )
+
+    def __del__( self ):
+        pass
+
+
+    # Virtual event handlers, overide them in your derived class
+    def OnClosePane( self, event ):
+        event.Skip()
+
+    def OnToggle( self, event ):
+        event.Skip()
+
+
+###########################################################################
+## Class bTablePanel
+###########################################################################
+
+class bTablePanel ( ScrolledWindow ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.ALWAYS_SHOW_SB|wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        ScrolledWindow.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._x_grid = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
+
+        # Grid
+        self._x_grid.CreateGrid( 0, 0 )
+        self._x_grid.EnableEditing( True )
+        self._x_grid.EnableGridLines( True )
+        self._x_grid.EnableDragGridSize( False )
+        self._x_grid.SetMargins( 0, 0 )
+
+        # Columns
+        self._x_grid.AutoSizeColumns()
+        self._x_grid.EnableDragColMove( False )
+        self._x_grid.EnableDragColSize( False )
+        self._x_grid.SetColLabelSize( 0 )
+        self._x_grid.SetColLabelAlignment( wx.ALIGN_CENTER, wx.ALIGN_CENTER )
+
+        # Rows
+        self._x_grid.AutoSizeRows()
+        self._x_grid.EnableDragRowSize( False )
+        self._x_grid.SetRowLabelSize( 0 )
+        self._x_grid.SetRowLabelAlignment( wx.ALIGN_CENTER, wx.ALIGN_CENTER )
+
+        # Label Appearance
+
+        # Cell Defaults
+        self._x_grid.SetDefaultCellFont( wx.Font( 8, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+        self._x_grid.SetDefaultCellAlignment( wx.ALIGN_CENTER, wx.ALIGN_CENTER )
+        _sizer.Add( self._x_grid, wx.GBPosition( 0, 1 ), wx.GBSpan( 1, 1 ), wx.ALIGN_BOTTOM|wx.ALIGN_LEFT|wx.LEFT, 5 )
+
+        self._y_grid = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
+
+        # Grid
+        self._y_grid.CreateGrid( 0, 0 )
+        self._y_grid.EnableEditing( True )
+        self._y_grid.EnableGridLines( True )
+        self._y_grid.EnableDragGridSize( False )
+        self._y_grid.SetMargins( 0, 0 )
+
+        # Columns
+        self._y_grid.AutoSizeColumns()
+        self._y_grid.EnableDragColMove( False )
+        self._y_grid.EnableDragColSize( False )
+        self._y_grid.SetColLabelSize( 0 )
+        self._y_grid.SetColLabelAlignment( wx.ALIGN_CENTER, wx.ALIGN_CENTER )
+
+        # Rows
+        self._y_grid.AutoSizeRows()
+        self._y_grid.EnableDragRowSize( False )
+        self._y_grid.SetRowLabelSize( 0 )
+        self._y_grid.SetRowLabelAlignment( wx.ALIGN_CENTER, wx.ALIGN_CENTER )
+
+        # Label Appearance
+
+        # Cell Defaults
+        self._y_grid.SetDefaultCellFont( wx.Font( 8, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+        self._y_grid.SetDefaultCellAlignment( wx.ALIGN_RIGHT, wx.ALIGN_CENTER )
+        _sizer.Add( self._y_grid, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 1 ), wx.ALIGN_RIGHT|wx.ALIGN_TOP|wx.TOP, 5 )
+
+        self._table_grid = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
+
+        # Grid
+        self._table_grid.CreateGrid( 0, 0 )
+        self._table_grid.EnableEditing( True )
+        self._table_grid.EnableGridLines( True )
+        self._table_grid.EnableDragGridSize( False )
+        self._table_grid.SetMargins( 0, 0 )
+
+        # Columns
+        self._table_grid.AutoSizeColumns()
+        self._table_grid.EnableDragColMove( False )
+        self._table_grid.EnableDragColSize( True )
+        self._table_grid.SetColLabelSize( 0 )
+        self._table_grid.SetColLabelAlignment( wx.ALIGN_CENTER, wx.ALIGN_CENTER )
+
+        # Rows
+        self._table_grid.AutoSizeRows()
+        self._table_grid.EnableDragRowSize( False )
+        self._table_grid.SetRowLabelSize( 0 )
+        self._table_grid.SetRowLabelAlignment( wx.ALIGN_CENTER, wx.ALIGN_CENTER )
+
+        # Label Appearance
+
+        # Cell Defaults
+        self._table_grid.SetDefaultCellFont( wx.Font( 8, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+        self._table_grid.SetDefaultCellAlignment( wx.ALIGN_RIGHT, wx.ALIGN_CENTER )
+        _sizer.Add( self._table_grid, wx.GBPosition( 1, 1 ), wx.GBSpan( 1, 1 ), wx.ALIGN_LEFT|wx.ALIGN_TOP|wx.ALL, 5 )
+
+
+        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableRow( 1 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+        # Connect Events
+        self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClose )
+
+    def __del__( self ):
+        pass
+
+
+    # Virtual event handlers, overide them in your derived class
+    def OnClose( self, event ):
         event.Skip()
 
 

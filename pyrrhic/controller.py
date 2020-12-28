@@ -13,15 +13,18 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import json
 import logging
 import os
 import threading
 
-_logger = logging.getLogger(__name__)
-
-from .common.rom import Rom
+from .common import _prefs_file
+from .common.definitions import DefinitionManager, ROMDefinition
+from .common.helpers import PyrrhicJSONEncoder
 from .common.preferences import PreferenceManager
-from .common.definitions import DefinitionManager
+from .common.rom import Rom
+
+_logger = logging.getLogger(__name__)
 
 class DefinitionFound(Exception):
     pass
@@ -31,8 +34,15 @@ class PyrrhicController(object):
 
     def __init__(self, frame):
         self._frame = frame
-        self._prefs = PreferenceManager()
-        self._defmgr = DefinitionManager()
+        self._prefs = PreferenceManager(_prefs_file)
+
+        # create default preference file if it doesn't already exist
+        if not os.path.isfile(_prefs_file):
+            self.save_prefs()
+
+        self._defmgr = DefinitionManager(
+            ecuflashRoot=self._prefs['ECUFlashRepo'].Value
+        )
 
         self._roms = {}
 
@@ -43,44 +53,35 @@ class PyrrhicController(object):
             # TODO: push status notification indicating ROM already loaded
             return
 
-        rom, defn = None, None
+        defn = None
+
+        _logger.debug('Loading ROM image {}'.format(fpath))
 
         # load raw image bytes
         with open(fpath, 'rb') as fp:
-            rom_bytes = fp.read()
+            rom_bytes = memoryview(fp.read())
 
         # inspect bytes at all internal ID addresses specified in definitions
-        for addr in self._defmgr.UniqueInternalIDAddrs:
+        try:
+            for addr in self._defmgr.ECUFlashSearchTree:
+                len_tree = self._defmgr.ECUFlashSearchTree[addr]
 
-            try:
+                for nbytes in len_tree:
+                    vals = len_tree[nbytes]
 
-                # check for a matching hex ID
-                for id_length in self._defmgr.UniqueHexIDLengths:
-                    id_bytes = rom_bytes[addr:addr+id_length]
-                    id_str = id_bytes.hex().upper()
-
-                    if id_str in self._defmgr.ECUFlashDefsByHex:
-                        defn = self._defmgr.ECUFlashDefsByHex[id_str]
+                    id_bytes = rom_bytes[addr:addr + nbytes].tobytes()
+                    if id_bytes in vals:
+                        defn = vals[id_bytes]
                         raise DefinitionFound
 
-                # check for matching string ID
-                for id_length in self._defmgr.UniqueStringIDLengths:
+        except DefinitionFound:
+            defn.resolve_dependencies(self._defmgr.ECUFlashDefs)
+            d = ROMDefinition(EditorDef=defn)
+            self._roms[fpath] = Rom(fpath, rom_bytes, d)
+            return
 
-                    try:
-                        id_str = rom_bytes[addr:addr+id_length].decode('ascii').upper()
-                    except UnicodeDecodeError:
-                        continue
-
-                    if id_str in self._defmgr.ECUFlashDefsByString:
-                        defn = self._defmgr.ECUFlashDefsByString[id_str]
-                        raise DefinitionFound
-
-            except DefinitionFound:
-                self._roms[fpath] = Rom(fpath, rom_bytes, defn)
-                return
-
-            except Exception as e:
-                raise
+        except Exception as e:
+            raise
 
         self._frame.error_box(
             'Undefined ROM',
@@ -93,6 +94,18 @@ class PyrrhicController(object):
         ecuflash_repo_dir = self._prefs['ECUFlashRepo'].Value
         if ecuflash_repo_dir:
             self._defmgr.load_ecuflash_repository(ecuflash_repo_dir)
+
+        self._frame.refresh_tree()
+
+    def save_prefs(self):
+
+        with open(_prefs_file, 'w') as fp:
+            _logger.info('Saving preferences to {}'.format(_prefs_file))
+            json.dump(self._prefs, fp, cls=PyrrhicJSONEncoder, indent=4)
+
+    @property
+    def LoadedROMs(self):
+        return self._roms
 
     @property
     def Preferences(self):

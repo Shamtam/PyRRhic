@@ -14,9 +14,15 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+import os
+import sys
 import wx
 
+from .common import _log_file, _prefs_dir
+from .common.logging import _file_formatter
 from .ui.MainFrame import MainFrame
+
+_debug = True
 
 class PyrrhicApp(wx.App):
     def OnInit(self):
@@ -25,5 +31,24 @@ class PyrrhicApp(wx.App):
         self.frame.Show()
         return True
 
-app = PyrrhicApp(False)
-app.MainLoop()
+with open(_log_file, 'w') as fp:
+    # setup root logging
+    _root_log = logging.getLogger()
+    _handler = logging.FileHandler(_log_file)
+    _handler.setFormatter(_file_formatter)
+    _root_log.addHandler(_handler)
+    _root_log.setLevel(logging.INFO)
+
+    sys.excepthook = (
+        lambda t, v, tb:
+            _root_log.critical('Unhandled Exception', exc_info=(t, v, tb))
+    )
+
+    app = PyrrhicApp(False)
+
+    if _debug:
+        _root_log.setLevel(logging.DEBUG)
+        from wx.lib.inspection import InspectionTool
+        InspectionTool().Show()
+
+    app.MainLoop()

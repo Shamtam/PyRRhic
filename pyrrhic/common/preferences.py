@@ -13,12 +13,18 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import json
+import logging
 import os
 
-from collections import OrderedDict
 from collections.abc import MutableMapping
+from pyrrhic.common.enums import UserLevel
 
-class PyrrhicPreference(object):
+from .helpers import PyrrhicJSONSerializable
+
+_logger = logging.getLogger(__name__)
+
+class PyrrhicPreference(PyrrhicJSONSerializable):
     "Base preference class"
 
     def __init__(self, name, **kwargs):
@@ -47,11 +53,27 @@ class PyrrhicPreference(object):
             type(self), self._name, self._value
         )
 
+    def __eq__(self, other):
+        return (
+            isinstance(other, PyrrhicPreference)
+            and other._name == self._name
+            and other._value == self._value
+        )
+
     def _get_val(self):
         return self._value
 
     def _set_val(self, val):
         raise NotImplementedError('To be implemented in subclasses')
+
+    def to_json(self):
+        return self._value
+
+    def from_json(self):
+        raise NotImplementedError
+
+    def init_from_json(self, val):
+        self._value = val
 
     @property
     def Name(self):
@@ -110,15 +132,30 @@ class BoolPreference(PyrrhicPreference):
         if isinstance(val, bool):
             self._value = val
 
+    def init_from_json(self, val):
+        self._value = bool(val)
+
 class DirPreference(PyrrhicPreference):
     def _set_val(self, val):
         if isinstance(val, str) and os.path.isdir(val):
             self._value = val
 
+    def to_json(self):
+        return os.path.abspath(self._value)
+
+    def init_from_json(self, val):
+        self._value = val if os.path.isdir(val) else None
+
 class FilePreference(PyrrhicPreference):
     def _set_val(self, val):
         if isinstance(val, str) and os.path.isfile(val):
             self._value = val
+
+    def to_json(self):
+        return os.path.abspath(self._value)
+
+    def init_from_json(self, val):
+        self._value = val if os.path.isfile(val) else None
 
 class ColorPreference(PyrrhicPreference):
     """Stores a colour as a 24-bit packed integer in RGB order"""
@@ -134,6 +171,12 @@ class ColorPreference(PyrrhicPreference):
         elif isinstance(val, int):
             self._value = val
 
+    def init_from_json(self, val):
+        try:
+            self._value = int(val) if int(val) in range(0x1000000) else 0
+        except Exception:
+            self._value = 0
+
     @property
     def ValueTuple(self):
         r, g, b = (
@@ -144,87 +187,125 @@ class ColorPreference(PyrrhicPreference):
         return (r, g, b)
 
 class EnumPreference(PyrrhicPreference):
-    def __init__(self, name, choices, value=0):
-        super(EnumPreference, self).__init__(name, value=value)
+    def __init__(self, name, choices, values=None, value=0, **kwargs):
+        super(EnumPreference, self).__init__(name, value=value, **kwargs)
         self._choices = choices
+        self._values = values if values else range(len(choices))
 
-    def Value(self, val):
-        if isinstance(val, int) and val in range(len(self._choices)):
+    def _set_val(self, val):
+        if isinstance(val, int):
             self._value = val
+
+    def init_from_json(self, val):
+        try:
+            self._value = int(val) if int(val) in self._values else self._values[0]
+        except Exception:
+            self._value = 0
 
     @property
     def Choices(self):
         return self._choices
 
+    @property
+    def Values(self):
+        return self._values
+
 class CategoryPreference(PyrrhicPreference):
     pass
 
-class PreferenceManager(MutableMapping):
+_default_prefs = [
+    CategoryPreference('Editor'),
+    DirPreference(
+        'ECUFlashRepo',
+        label='ECUFlash Definition Repository Location',
+        help=(
+            'Top-level directory containing one ECUFlash Definition ' +
+            'Repository (e.g. .../SubaruDefs/ECUFlash/subaru standard)'
+        )
+    ),
+    EnumPreference(
+        'UserLevel',
+        label='User Level',
+        help='Determines which tables are available for viewing/editing',
+        choices=[x.name for x in UserLevel],
+        values=[x.value for x in UserLevel],
+        value=1
+    ),
+
+    CategoryPreference('Logger'),
+    FilePreference(
+        'RRLoggerDef',
+        label='RomRaider Logger Definition File',
+        help='XML file containing RomRaider logger definitions',
+        attribs={
+            'ext': 'xml',
+            'fdesc': 'XML Files',
+            'fullpath': True,
+            'style': 'open',
+        }
+    ),
+
+    CategoryPreference('Log Colors'),
+    ColorPreference(
+        'CriticalLogColor',
+        label='Critical',
+        help='Critical message color in log',
+        value=0xc00000
+    ),
+    ColorPreference(
+        'ErrorLogColor',
+        label='Error',
+        help='Error message color in log',
+        value=0xc07d00
+    ),
+    ColorPreference(
+        'WarningLogColor',
+        label='Warning',
+        help='Warning message color in log',
+        value=0xc0c000
+    ),
+    ColorPreference(
+        'InfoLogColor',
+        label='Info',
+        help='Info message color in log',
+        value=0x0
+    ),
+    ColorPreference(
+        'DebugLogColor',
+        label='Debug',
+        help='Debug message color in log',
+        value=0xcccccc
+    ),
+]
+
+class PreferenceDecoder(json.JSONDecoder):
+    def decode(self, s):
+        in_dict = super(PreferenceDecoder, self).decode(s)
+        out_dict = {x.Name:x for x in _default_prefs}
+
+        for pref in in_dict:
+            if pref in out_dict and in_dict[pref] is not None:
+                out_dict[pref].init_from_json(in_dict[pref])
+
+        return out_dict
+
+class PreferenceManager(MutableMapping, PyrrhicJSONSerializable):
     "Container for global application preferences"
 
-    _default_prefs = [
-        CategoryPreference('Editor'),
-        DirPreference(
-            'ECUFlashRepo',
-            label='ECUFlash Definition Repository Location',
-            help=(
-                'Top-level directory containing one ECUFlash Definition ' +
-                'Repository (e.g. .../SubaruDefs/ECUFlash/subaru standard)'
-            )
-        ),
+    def __init__(self, prefs_fpath=None):
+        self._prefs = {x.Name:x for x in _default_prefs}
 
-        CategoryPreference('Logger'),
-        FilePreference(
-            'RRLoggerDef',
-            label='RomRaider Logger Definition File',
-            help='XML file containing RomRaider logger definitions',
-            attribs={
-                'ext': 'xml',
-                'fdesc': 'XML Files',
-                'fullpath': True,
-                'style': 'open',
-            }
-        ),
-
-        CategoryPreference('Log Colors'),
-        ColorPreference(
-            'CriticalLogColor',
-            label='Critical',
-            help='Critical message color in log',
-            value=0xc00000
-        ),
-        ColorPreference(
-            'ErrorLogColor',
-            label='Error',
-            help='Error message color in log',
-            value=0xc07d00
-        ),
-        ColorPreference(
-            'WarningLogColor',
-            label='Warning',
-            help='Warning message color in log',
-            value=0xc0c000
-        ),
-        ColorPreference(
-            'InfoLogColor',
-            label='Info',
-            help='Info message color in log',
-            value=0x0
-        ),
-        ColorPreference(
-            'DebugLogColor',
-            label='Debug',
-            help='Debug message color in log',
-            value=0xcccccc
-        ),
-    ]
-
-    def __init__(self, prefs={}):
-        self._prefs = OrderedDict([(x.Name, x) for x in self._default_prefs])
-
-        for pref in prefs:
-            if pref in self._default_prefs:
-                self._prefs[pref] = prefs[pref]
+        prefs = {}
+        if prefs_fpath is not None and os.path.isfile(prefs_fpath):
+            try:
+                with open(prefs_fpath, 'r') as fp:
+                    prefs = json.load(fp, cls=PreferenceDecoder)
+                    self._prefs = prefs
+            except:
+                _logger.warn(
+                    ('Unable to load preferences from {}. Using default '
+                    + 'preferences').format(prefs_fpath)
+                )
 
     def __getitem__(self, key):
         return self._prefs[key]
@@ -242,4 +323,14 @@ class PreferenceManager(MutableMapping):
         return len(self._prefs)
 
     def to_json(self):
-        raise NotImplementedError('TODO')
+        out_prefs = {}
+
+        for pref in self._prefs.values():
+
+            # no need to export category headers
+            if isinstance(pref, CategoryPreference) or not pref.Defined:
+                continue
+
+            out_prefs[pref.Name] = pref.to_json()
+
+        return out_prefs

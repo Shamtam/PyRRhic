@@ -16,11 +16,11 @@
 from enum import Enum, Flag, auto
 
 class UserLevel(Enum):
-    BEGINNER        = 1
-    INTERMEDIATE    = 2
-    ADVANCED        = 3
-    DEVELOPER       = 4
-    SUPERDEV        = 5 # not listed in ECUFlash GUI, but used in XMLs
+    Beginner        = 1
+    Intermediate    = 2
+    Advanced        = 3
+    Developer       = 4
+    Superdev        = 5 # not listed in ECUFlash GUI, but used in XMLs
 
 class DataType(Enum):
     UINT8   = auto()
@@ -31,6 +31,7 @@ class DataType(Enum):
     INT32   = auto()
     FLOAT   = auto()
     BLOB    = auto()
+    STATIC  = auto()
 
 _dtype_size_map = {
     DataType.UINT8:  1,
@@ -40,7 +41,20 @@ _dtype_size_map = {
     DataType.INT16:  2,
     DataType.INT32:  4,
     DataType.FLOAT:  4,
-    DataType.BLOB:   None    # shouldn't ever be used
+    DataType.BLOB:   None,   # shouldn't ever be used
+    DataType.STATIC: None,   # shouldn't ever be used
+}
+
+_dtype_struct_map = {
+    DataType.UINT8:  'B',
+    DataType.UINT16: 'H',
+    DataType.UINT32: 'I',
+    DataType.INT8:   'b',
+    DataType.INT16:  'h',
+    DataType.INT32:  'i',
+    DataType.FLOAT:  'f',
+    DataType.BLOB:   'B',
+    DataType.STATIC: None,   # shouldn't ever be used
 }
 
 _ecuflash_to_dtype_map = {
@@ -65,3 +79,8 @@ class TableDataType(Enum):
 class ByteOrder(Enum):
     BIG_ENDIAN = auto()
     LITTLE_ENDIAN = auto()
+
+_byte_order_struct_map = {
+    ByteOrder.BIG_ENDIAN : '>',
+    ByteOrder.LITTLE_ENDIAN : '<',
+}

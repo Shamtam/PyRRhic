@@ -44,15 +44,13 @@ class WxEventLogHandler(Handler):
         pass
 
 def modal_dialog_ok(parent, title, message, extra_styles=0):
-    dlg = wx.MessageBox(
+    return wx.MessageBox(
         message, caption=title, parent=parent,
         style= wx.STAY_ON_TOP | wx.OK | wx.CENTRE | extra_styles
     )
-    dlg.ShowModal()
 
 def modal_dialog_yn(parent, title, message, extra_styles=0):
-    dlg = wx.MessageBox(
+    return wx.MessageBox(
         message, caption=title, parent=parent,
         style= wx.STAY_ON_TOP | wx.YES_NO | wx.CENTRE | extra_styles
     )
-    return dlg.ShowModal()

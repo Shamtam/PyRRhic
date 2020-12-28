@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+    ],
+    "settings": {
+        "diffEditor.ignoreTrimWhitespace": false,
+        "files.trimTrailingWhitespace": true,
+        "python.venvPath": "${workspaceFolder}/venv"
+    }
+}

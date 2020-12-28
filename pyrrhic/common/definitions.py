@@ -17,10 +17,10 @@ import logging
 import os
 import xml.etree.ElementTree as ET
 
-from .structures import Scaling, Table, Table1D, _table_type_map
+from .helpers import PyrrhicJSONSerializable
+from .structures import Scaling, TableDef
 from .enums import (
-    DataType, TableDataType, ByteOrder, UserLevel,
-    _dtype_size_map, _ecuflash_to_dtype_map
+    DataType, UserLevel, _dtype_size_map, _ecuflash_to_dtype_map
 )
 
 _logger = logging.getLogger(__name__)
@@ -30,8 +30,7 @@ class DefinitionManager(object):
 
     def __init__(self, ecuflashRoot=None):
         self._ecuflash_defs = {}
-        self._ecuflash_defs_by_hex = None
-        self._ecuflash_defs_by_str = None
+        self._ecuflash_search_tree = {}
         self._rrlogger_defs = {}
 
         if ecuflashRoot and os.path.isdir(ecuflashRoot):
@@ -42,101 +41,121 @@ class DefinitionManager(object):
         Load all ECUFlash definitions stored in the given directory tree.
 
         Arguments:
-         - directory: absolute path of the definition repository's top-level
+         - directory: absolute path to the top-level of the repository
         """
 
         self._ecuflash_defs = {}
-        self._ecuflash_defs_by_hex = None
-        self._ecuflash_defs_by_str = None
 
         _fpaths = {}
 
         _logger.info('Loading ECUFlash repository located at {}'.format(directory))
 
-        for dirname, dirs, files in os.walk(directory):
-            for f in files:
+        files = [
+            os.path.join(root, f) for root, dirs, files in os.walk(directory)
+            for f in files
+            if 'xml' in os.path.splitext(f)[1]
+        ]
+        for abspath in files:
 
-                # only process xml files
-                if 'xml' not in os.path.splitext(f)[1]:
-                    continue
+            root = ET.parse(abspath)
+            xmlid_list = list(root.iter('xmlid'))
 
-                abspath = os.path.join(dirname, f)
-                root = ET.parse(abspath)
-                xmlid_list = list(root.iter('xmlid'))
+            _logger.debug(
+                'Loading definition from file {}'.format(
+                    abspath
+                )
+            )
 
-                _logger.debug(
-                    'Loading definition from file {}'.format(
+            if len(xmlid_list) == 1:
+                xmlid = xmlid_list[0].text
+
+                # new definition, instantiate container
+                if xmlid not in self._ecuflash_defs:
+
+                    kw = {}
+                    kw['scalings'] = {}
+                    scalings = root.findall('scaling')
+                    for scaling in scalings:
+                        if {'name', 'storagetype'} <= scaling.attrib.keys():
+                            name = scaling.attrib['name']
+                            if name not in kw['scalings']:
+                                kw['scalings'][name] = scaling
+                            else:
+                                _logger.warn(
+                                    'Ignoring duplicate scaling {}'.format(name)
+                                )
+                        else:
+                            _logger.warn(
+                                'Ignoring insufficiently defined scaling  {}'.format(scaling)
+                            )
+
+                    kw['parents'] = {x.text: None for x in root.findall('include')}
+                    kw['tables'] = {
+                        x.attrib['name']: x for x in root.findall('table')
+                        if 'name' in x.attrib
+                    }
+                    kw.update({x.tag: x.text for x in root.find('romid')})
+
+                    self._ecuflash_defs[xmlid] = ECUFlashDef(xmlid, **kw)
+                    _fpaths[xmlid] = abspath
+
+                else:
+                    _logger.warn(
+                        'Already loaded {}, skipping definition file {}'.format(
+                            xmlid,  abspath
+                        )
+                    )
+            else:
+                _logger.warn(
+                    'Malformed definition {}: multiple `xmlid`s defined'.format(
                         abspath
                     )
                 )
 
-                if len(xmlid_list) == 1:
-                    xmlid = xmlid_list[0].text
-
-                    # new definition, instantiate container
-                    if xmlid not in self._ecuflash_defs:
-
-                        kw = {}
-                        kw['scalings'] = {}
-                        scalings = root.findall('scaling')
-                        for scaling in scalings:
-                            if {'name', 'storagetype'} <= scaling.attrib.keys():
-                                name = scaling.attrib['name']
-                                if name not in kw['scalings']:
-                                    kw['scalings'][name] = scaling
-                                else:
-                                    _logger.warn(
-                                        'Ignoring duplicate scaling {}'.format(name)
-                                    )
-                            else:
-                                _logger.warn(
-                                    'Ignoring insufficiently defined scaling  {}'.format(scaling)
-                                )
-
-                        kw['parents'] = {x.text: None for x in root.findall('include')}
-                        kw['tables'] = {
-                            x.attrib['name']: x for x in root.findall('table')
-                            if 'name' in x.attrib
-                        }
-                        kw.update({x.tag: x.text for x in root.find('romid')})
-
-                        self._ecuflash_defs[xmlid] = ECUFlashDef(xmlid, **kw)
-                        _fpaths[xmlid] = abspath
-
-                    else:
-                        _logger.warn(
-                            'Already loaded {}, skipping definition file {}'.format(
-                                xmlid,  abspath
-                            )
-                        )
-                else:
-                    _logger.warn(
-                        'Malformed definition {}: multiple `xmlid`s defined'.format(
-                            abspath
-                        )
-                    )
-
+        # generate search tree, implemented as a nested dictionary
+        # outer dictionary is keyed by `internalidaddress`
+        # next level is keyed by length of the internalid value
+        # the final level is keyed by the bytes of the internalid
+        # if both tags are present, `internalidhex` is used over
+        # `internalidstring`
+        # e.g.: `A2UI001L` has an address of 0x2000, and only contains a
+        # `internalidstring` field. Thus, its def would be located at
+        # self._ecuflash_search_tree[0x2000][8]['A2UI001L']
+        tree = {}
         for d in self._ecuflash_defs.values():
-            try:
-                d.resolve_dependencies(self._ecuflash_defs)
-            except Exception as e:
-                _logger.warn(
-                    'Malformed definition file "{}"\n{}\n'.format(
-                        _fpaths[d.Identifier], e
-                    )
+            i = d.Info
+            addr = i['internalidaddress']
+            id_hex = i['internalidhex']
+            id_str = i['internalidstring']
+
+            if not addr:
+                continue
+
+            addr = int(addr, base=16)
+            if addr not in tree:
+                tree[addr] = {}
+
+            if addr and id_hex:
+                val = bytes.fromhex(id_hex)
+            elif addr and id_str:
+                val = id_str.encode('ascii')
+            else:
+                continue
+
+            nbytes = len(val)
+            if nbytes not in tree[addr]:
+                tree[addr][nbytes] = {}
+            if val not in tree[addr][nbytes]:
+                tree[addr][nbytes][val] = d
+            else:
+                raise ValueError(
+                    'Duplicate definition of internalid {}'.format(val)
                 )
 
-        self._ecuflash_defs_by_hex = {
-            d.Info['internalidhex'].upper(): d for d in self._ecuflash_defs.values()
-            if d.Info['internalidhex'] is not None
-        }
-        self._ecuflash_defs_by_str = {
-            d.Info['internalidstring'].upper(): d for d in self._ecuflash_defs.values()
-            if d.Info['internalidstring'] is not None
-        }
+        self._ecuflash_search_tree = tree
 
         _logger.info(
-            'Finished loading {} ECUFlash definitions'.format(
+            'Loaded {} ECUFlash definitions'.format(
                 len(self._ecuflash_defs)
             )
         )
@@ -147,32 +166,8 @@ class DefinitionManager(object):
         return self._ecuflash_defs
 
     @property
-    def ECUFlashDefsByHex(self):
-        "`dict` of {`internalidhex`: `<ECUFlashDef>`} key-val pairs"
-        return self._ecuflash_defs_by_hex
-
-    @property
-    def ECUFlashDefsByString(self):
-        "`dict` of {`internalidstring`: `<ECUFlashDef>`} key-val pairs"
-        return self._ecuflash_defs_by_str
-
-    @property
-    def UniqueInternalIDAddrs(self):
-        "`set` of all `internalidaddress` values in the ECUFlash repository"
-        return set([
-            int(x.Info['internalidaddress'], base=16) for x in self._ecuflash_defs.values()
-            if x.Info['internalidaddress'] is not None
-        ])
-
-    @property
-    def UniqueHexIDLengths(self):
-        "`set` of all lengths of `internalidhex`s in the ECUFlash repository"
-        return set([len(x)//2 for x in self._ecuflash_defs_by_hex.keys()])
-
-    @property
-    def UniqueStringIDLengths(self):
-        "`set` of all lengths of `internalidstring`s in the ECUFlash repository"
-        return set([len(x) for x in self._ecuflash_defs_by_str.keys()])
+    def ECUFlashSearchTree(self):
+        return self._ecuflash_search_tree
 
     @property
     def IsValid(self):
@@ -182,29 +177,30 @@ class ECUFlashDef(object):
     """
     Encompasses all portions of an ECUFlash definition file.
 
-    Use keywords to seed the definition during init. Keywords described below
-    are used to seed the corresponding portions of the definition. Any other
-    keywords are interpreted as `romid` elements. These keywords all match the
-    tag names used in ECUFlash. Any extra keys that don't match a known ECUFlash
-    `romid` element is ignored.
+    Use keywords to seed the definition during init. Keywords described
+    below are used to seed the corresponding portions of the definition.
+    Any other keywords are interpreted as `romid` elements. These
+    keywords all match the tag names used in ECUFlash. Any extra keys
+    that don't match a known ECUFlash `romid` element is ignored.
 
-    ## Note: Instance initialization may not completely initialize the instance!
+    ## Note: Instantiation does not initialize the instance!
     ## See `resolve_dependencies` for more information.
 
     Arguments:
      - identifier - Unique identification string for this def
 
     Keywords [Default]:
-    - parents [`{}`] - `dict` of `ECUFlashDef`s keyed by their unique identifier.
-        If the value is `None`, it will be resolved during dependency resolution.
+    - parents [`{}`] - `dict` of `ECUFlashDef`s keyed by their unique
+        identifier. If the value is `None`, it will be resolved during
+        dependency resolution.
 
-    - scalings [`{}`] - `dict` of scaling definitions. The dict should be keyed
-        by the name of the corresponding scaling, and the value for each key
-        is a `Scaling`.
+    - scalings [`{}`] - `dict` of scaling definitions. The dict should
+        be keyed by the name of the corresponding scaling, and the value
+        for each key is a `Scaling`.
 
-    - tables [`{}`] - `dict` of table definitions. Each element can either be
-        a `Table`, or a dictionary containing the necessary elements to
-        instantiate a `Table` during dependency resolution.
+    - tables [`{}`] - `dict` of table definitions. Each element can
+        either be a `TableDef`, or a dictionary containing the necessary
+        elements to instantiate a `TableDef` during dependency resolution.
     """
 
     def __init__(self, identifier, **kwargs):
@@ -255,34 +251,31 @@ class ECUFlashDef(object):
 
     def _determine_axis_info(self, ax):
         """
-        Generate the necessary information to instantiate a `Table1D`.
+        Generate the necessary information to instantiate a 1D `TableDef`.
 
-        Returns a 2-tuple (`name`, `kw`) containing the name and all necessary
-        keyword arguments to a `Table1D` initializer call.
+        Returns a 2-tuple (`name`, `kw`) containing the name and all
+        necessary keyword arguments to a `TableDef` initializer call.
 
         `ax` is the `Element` corresponding to the axis `<table>` tag
         """
         name = ax.attrib.get('name', 'Axis')
         ax_kw = {
             'Address': ax.attrib.get('address', None),
+            'Length': int(ax.attrib['elements']) if 'elements' in ax.attrib else None,
         }
 
-        # determine axis data type
+        # try to determine axis data type
         if 'scaling' in ax.attrib:
             ax_kw['Scaling'] = self._all_scalings[ax.attrib['scaling']]
             xml_scaling = ax_kw['Scaling'].xml
             ax_kw['Datatype'] = _ecuflash_to_dtype_map[
                 xml_scaling.attrib['storagetype']
             ]
-            ax_kw['Length'] = (
-                int(ax.attrib['elements'])
-                if 'elements' in ax.attrib else None
-            )
 
         # axis has discrete data points
         elif len(ax):
             ax_kw.update({
-                'Datatype': DataType.BLOB,
+                'Datatype': DataType.STATIC,
                 'Values': [x.text for x in ax.findall('data')],
                 'Length': len(ax.findall('data')),
             })
@@ -306,8 +299,12 @@ class ECUFlashDef(object):
 
         # for bloblist, generate mappings for conversion expressions
         if d.attrib['storagetype'] == 'bloblist':
-            props['disp_expr'] = {x.attrib['value']: x.attrib['name'] for x in d}
-            props['raw_expr'] = {x.attrib['name']: x.attrib['value'] for x in d}
+            props['disp_expr'] = {
+                x.attrib['value'].upper(): x.attrib['name'] for x in d
+            }
+            props['raw_expr'] = {
+                x.attrib['name']: x.attrib['value'].upper() for x in d
+            }
 
         # if for some reason the expressions haven't been determined,
         # default to expressions that return the raw value
@@ -323,7 +320,7 @@ class ECUFlashDef(object):
 
     def _table_from_xml(self, tab):
         """
-        Instantiate an appropriate `Table` from an `xml.etree.ElementTree.Element`
+        Instantiate an appropriate `TableDef` from an `xml.etree.ElementTree.Element`
         """
 
         if not isinstance(tab, ET.Element):
@@ -332,19 +329,18 @@ class ECUFlashDef(object):
         attrs = tab.attrib
 
         name = attrs['name']
-        axes = []
+        axes = [] if attrs.get('type', None) in ['1D', '2D', '3D'] else None
 
         # try to infer table type from number of table children if no
         # table attribute is stored in the table tag
-        table_type = attrs.get('type', None)
         ax_info = list(filter(lambda x: x.tag == 'table', tab))
-        if ax_info:
-            table_type = ('{:d}D'.format(len(ax_info) + 1))
 
-        # instantiate any axes
+        # instantiate any axes for 2D/3D tables
         for ax in ax_info:
+            if axes is None:
+                axes = []
             ax_name, ax_kw = self._determine_axis_info(ax)
-            axes.append(Table1D(ax_name, self, **ax_kw))
+            axes.append(TableDef(ax_name, None, **ax_kw))
 
         desc = tab.find('description')
 
@@ -365,7 +361,7 @@ class ECUFlashDef(object):
             if scaling is not None else None
         )
 
-        length = attrs.get('elements', None)
+        length = attrs.get('elements', None) # only used for 1D tables
 
         # for bloblist tables, assume each value is same length of
         # bytes, and use first entry in scaling to determine number
@@ -386,38 +382,53 @@ class ECUFlashDef(object):
             'Length': length,
             'NumBytes': nbytes,
             'Address': address,
+            'Axes': axes,
         }
 
-        # instantiate specific table type if determined, or base class if not
-        args = [name, self] + axes
-        if table_type is not None:
-            table = _table_type_map[table_type](*args, **kw)
-        else:
-            table = Table(name, self, **kw)
+        # for defs with no parents, generate default values for
+        # necessary table properties
+        if not self._parents:
+            _default_kw = {
+                'Category': '<Uncategorized>',
+                'Description': '<No Description Available>',
+                'Level': UserLevel.Superdev,
+                'Length': 1,
+            }
+            for key in _default_kw:
+                if kw[key] is None:
+                    kw[key] = _default_kw[key]
 
+        # instantiate specific table type if determined, or base class if not
+        table = TableDef(name, self, **kw)
+
+        _logger.debug(
+            'Instantiating table {}:{}'.format(self._identifier, name)
+        )
         return table
 
     def resolve_dependencies(self, defs_dict):
         """
         Resolve all portions of the definition into their proper encapsulations.
 
-        Because definitions can be hierarchical, when loading from ECUFlash XML
-        files, it is necessary to first load and seed all definitions with all
-        of the data stored in the original XML file, then resolve all portions
-        into their final encapsulating object (i.e. `Scaling` or `Table`),
-        taking into account any hierarchy.
+        Because definitions can be hierarchical, when loading from
+        ECUFlash XML files, it is necessary to first load and seed all
+        definitions with all of the data stored in the original XML file,
+        then resolve all portions into their final encapsulating object
+        (i.e. `Scaling` or `TableDef`), taking into account any hierarchy.
 
-        `defs_dict` should be a `dict` containing all of the definitions in the
-        repository. It is keyed by the `xmlid` of each definition, and each
-        value is either an `ECUFlashDef` or another `dict` with these keys:
+        `defs_dict` should be a `dict` containing all of the definitions
+        in the repository. It is keyed by the `xmlid` of each definition,
+        and each value is either an `ECUFlashDef` or another `dict` with
+        these keys:
         - `path`: absolute path of the original xml file of the definition
         - `root`: raw `ElementTree` of the definition
         - `parents`: list of `xmlid`s indicating any inherited definitions
         - `scalings`: `dict` of `Scaling`s contained in the definition
-        - `tables`: `dict` of `Table`s contained in the definition
+        - `tables`: `dict` of `TableDef`s contained in the definition
 
-        In terms of hierarchy, the order of the `include` elements is considered
-        from latest to earliest. In other words, if a definition contained:
+        In terms of hierarchy, the order of the `include` elements is
+        considered from latest to earliest. In other words, if a
+        definition contained:
 
         ```xml
             <include>32BITBASE</include>
@@ -426,8 +437,8 @@ class ECUFlashDef(object):
 
         Then any information missing from this definition would first be
         gathered from `WXYZ0000`, and if still not found, would then be
-        gathered from `32BITBASE`. If data is unable to be resolved after
-        scanning parents, then an exception is thrown.
+        gathered from `32BITBASE`. If data is unable to be resolved
+        after scanning parents, then an exception is thrown.
         """
 
         # already initialized, nothing to resolve
@@ -473,20 +484,21 @@ class ECUFlashDef(object):
 
         # resolve tables
         table_names = list(filter(
-            lambda x: not isinstance(self._tables[x], Table), self._tables
+            lambda x: not isinstance(self._tables[x], TableDef), self._tables
         ))
         for t in table_names:
             tab = self._tables[t]
             table = self._table_from_xml(tab)
 
-            if not table.IsFullyDefined and self._parents:
+            # if not table.IsFullyDefined and self._parents:
+            if self._parents:
 
                 # use a DFS to resolve any undefined table parameters
                 # iterate over parents and their parents in reverse order
                 checked_defs = []
                 unchecked_defs = list(reversed(self._parents.keys()))
 
-                while not table.IsFullyDefined and unchecked_defs:
+                while unchecked_defs:
 
                     xmlid = unchecked_defs.pop(0)
                     checked_defs.append(xmlid)
@@ -507,25 +519,25 @@ class ECUFlashDef(object):
                     if t in current_def._tables:
                         new_table = current_def._tables[t]
 
-                        # if local table type is undefined and parent is defined,
-                        # instantiate appropriate table type
-                        if type(table) == Table and type(new_table) != Table:
-                            axes = new_table.Axes
-                            args = [table.Name, self] + axes
-                            table = type(new_table)(*args, **{})
-                            table.update(table)
+            #             # if local table type is undefined and parent is defined,
+            #             # instantiate appropriate table type
+            #             if type(table) == TableDef and type(new_table) != TableDef:
+            #                 axes = new_table.Axes
+            #                 args = [table.Name, self] + axes
+            #                 table = type(new_table)(*args, **{})
+            #                 table.update(table)
 
-                        # if local table type and parent type don't match,
-                        # assume a definition error and remove table from def
-                        elif type(table) != type(new_table):
-                            _logger.warn(
-                                'Definition error for table "{}"\n'.format(table.Name) +
-                                'Definition in "{}" conflicts with definition in "{}"\n'.format(
-                                    table.Parent.Identifier, new_table.Parent.Identifier
-                                )
-                            )
-                            del self._tables[t]
-                            continue
+            #             # if local table type and parent type don't match,
+            #             # assume a definition error and remove table from def
+            #             elif type(table) != type(new_table):
+            #                 _logger.warn(
+            #                     'Definition error for table "{}"\n'.format(table.Name) +
+            #                     'Definition in "{}" conflicts with definition in "{}"\n'.format(
+            #                         table.Parent.Identifier, new_table.Parent.Identifier
+            #                     )
+            #                 )
+            #                 del self._tables[t]
+            #                 continue
 
                         # update undefined properties
                         table.update(new_table)
@@ -552,6 +564,27 @@ class ECUFlashDef(object):
         return self._info
 
     @property
+    def DisplayInfo(self):
+        _disp_map = {
+            'internalidaddress' : 'Calibration ID Address',
+            'internalidstring'  : 'Calibration ID [ASCII]',
+            'internalidhex'     : 'Calibration ID [Bytes]',
+            'ecuid'             : 'ECU ID',
+            'year'              : 'Year',
+            'market'            : 'Market',
+            'make'              : 'Make',
+            'model'             : 'Model',
+            'submodel'          : 'Sub-model',
+            'transmission'      : 'Transmission',
+            'memmodel'          : 'Memory Model',
+            'flashmethod'       : 'Flash Method',
+            'filesize'          : 'ROM Size',
+            'checksummodule'    : 'Checksum Module',
+            'caseid'            : 'Case ID',
+        }
+        return {_disp_map[k]:v for k, v in self._info.items() if v is not None}
+
+    @property
     def Parents(self):
         return self._parents
 
@@ -570,3 +603,25 @@ class ECUFlashDef(object):
     @property
     def AllTables(self):
         return self._all_tables
+
+class ROMDefinition(PyrrhicJSONSerializable):
+    def __init__(self, EditorDef=None, LoggerDef=None):
+        self._editor_def = EditorDef
+        self._logger_def = LoggerDef
+        self._tables = {}
+
+    def to_json(self):
+        # TODO
+        raise NotImplementedError
+
+    def from_json(self):
+        # TODO
+        raise NotImplementedError
+
+    @property
+    def EditorDef(self):
+        return self._editor_def
+
+    @property
+    def LoggerDef(self):
+        return self._logger_def

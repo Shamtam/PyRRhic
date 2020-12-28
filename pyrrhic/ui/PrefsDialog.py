@@ -64,9 +64,13 @@ class PrefsDialog(bPrefsDialog):
             val = pref.Value
             attribs = pref.Attributes
 
-            kw = {'name': name, 'label': label}
+            args = [label, name]
 
-            prop = _pref_to_prop_map[type(pref)](**kw)
+            if isinstance(pref, EnumPreference):
+                args.append(pref.Choices)
+                args.append(pref.Values)
+
+            prop = _pref_to_prop_map[type(pref)](*args)
 
             if helpStr:
                 prop.SetHelpString(helpStr)
