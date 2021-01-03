@@ -7,6 +7,9 @@
     "settings": {
         "diffEditor.ignoreTrimWhitespace": false,
         "files.trimTrailingWhitespace": true,
-        "python.venvPath": "${workspaceFolder}/venv"
+        "python.venvPath": "${workspaceFolder}/venv",
+        "terminal.integrated.env.windows": {
+            "PYTHONPATH": "${workspaceFolder}/submodules/PyJ2534/"
+        }
     }
 }

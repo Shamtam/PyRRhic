@@ -10,5 +10,8 @@
     "editor.tabSize": 4,
     "diffEditor.ignoreTrimWhitespace": false,
     "files.trimTrailingWhitespace": true,
-    "editor.useTabStops": true
+    "editor.useTabStops": true,
+    "python.analysis.extraPaths": [
+        "submodules/PyJ2534"
+    ]
 }
