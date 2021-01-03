@@ -99,11 +99,12 @@ class MainFrame(bMainFrame):
         if not self._controller.DefsValid:
             self.warning_box(
                 'No Definitions Loaded',
-                'No definitions loaded! Please ensure definition paths are correct',
+                'No definitions loaded! Ensure definition paths are correct',
             )
             return
 
-        dlg = wx.FileDialog(self,
+        dlg = wx.FileDialog(
+            self,
             'Open ROM File',
             wildcard='Binary ROM Image (*.hex; *.bin)|*.hex;*.bin|All Files|*.*',
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE
