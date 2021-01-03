@@ -5,6 +5,11 @@
 		}
     ],
     "settings": {
+        "[markdown]": {
+            "editor.wordWrap": "on",
+            "editor.quickSuggestions": false,
+            "files.trimTrailingWhitespace": false,
+        },
         "diffEditor.ignoreTrimWhitespace": false,
         "files.trimTrailingWhitespace": true,
         "python.venvPath": "${workspaceFolder}/venv",
