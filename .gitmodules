@@ -2,7 +2,6 @@
 	path = submodules/SubaruDefs
 	url = https://github.com/Shamtam/SubaruDefs.git
 	branch = Alpha
-[submodule "submodules/Python-J2534-Interface"]
-	path = submodules/Python-J2534-Interface
-	url = https://github.com/Shamtam/Python-J2534-Interface.git
-	branch = master
+[submodule "submodules/PyJ2534"]
+	path = submodules/PyJ2534
+	url = https://github.com/Shamtam/PyJ2534.git
