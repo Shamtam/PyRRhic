@@ -23,5 +23,5 @@ submod_dir = os.path.join(
 
 # add J2534 submodule to PYTHONPATH
 sys.path.insert(0,
-    os.path.join(submod_dir, 'Python-J2534-Interface')
+    os.path.join(submod_dir, 'PyJ2534')
 )
