@@ -21,7 +21,7 @@ from math import prod
 from xml.etree.ElementTree import Element
 
 from .enums import (
-    ByteOrder, DataType, UserLevel,
+    ByteOrder, DataType, LogParamType, UserLevel,
     _byte_order_struct_map, _dtype_struct_map, _dtype_size_map
 )
 
@@ -37,7 +37,6 @@ class Scaling(object):
         self.min = kwargs.pop('min', None)
         self.max = kwargs.pop('max', None)
         self.xml = kwargs.pop('xml', None)
-
 
         self._to_disp = (
             lambdify('x', self.disp_expr, 'numpy')
@@ -67,9 +66,10 @@ class TableDef(object):
     """
     Common base class encompassing a table definition.
 
-    Requires a name (a unique identifier). Keywords can be used to initialize
-    any class properties. Any supplied keywords must be correctly typed or
-    they'll be ignored; refer to property descriptions for correct types.
+    Requires a name (a unique identifier). Keywords can be used to
+    initialize any class properties. Any supplied keywords must be
+    correctly typed or they'll be ignored; refer to property
+    descriptions for correct types.
     """
     def __init__(self, name, parent, **kwargs):
         self._name = name
@@ -380,3 +380,87 @@ class RomTable(object):
     @Panel.setter
     def Panel(self, f):
         self._panel = f
+
+class LogParam(object):
+    "Base class for logging elements"
+
+    def __init__(self, parent, identifier, ptype, **kwargs):
+        self._parent = parent
+        self._identifier = identifier
+        self._ptype = ptype
+        self._name = kwargs.pop('Name', 'LogParam_{}'.format(identifier))
+        self._desc = kwargs.pop('Description', '')
+        self._addrs = kwargs.pop('Addresses', None)
+        self._byteidx = kwargs.pop('ECUByteIndex', None)
+        self._bitidx = kwargs.pop('ECUBit', None)
+        self._scaling = kwargs.pop('Scaling', None)
+        self._datatype = kwargs.pop('Datatype', None)
+        self._tempaddr = kwargs.pop('TempAddr', None)
+        self._memaddr = kwargs.pop('MemAddr', None)
+        self._target = kwargs.pop('Target', None)
+
+    def __repr__(self):
+        return '<{} {}: {}>'.format(
+            self._ptype.name, self._identifier, self._name
+        )
+
+    @property
+    def Parent(self):
+        return self._parent
+
+    @property
+    def Identifier(self):
+        return self._identifier
+
+    @property
+    def ParamType(self):
+        return self._ptype
+
+    @property
+    def Target(self):
+        return self._target
+
+    @property
+    def Name(self):
+        return self._name
+
+    @property
+    def Description(self):
+        return self._desc
+
+    @property
+    def Addresses(self):
+        return self._addrs
+
+    @property
+    def ByteIndex(self):
+        return self._byteidx
+
+    @property
+    def BitIndex(self):
+        return self._bitidx
+
+    @property
+    def Scaling(self):
+        return self._scaling
+
+    @Scaling.setter
+    def Scaling(self, s):
+        if isinstance(s, Scaling):
+            self._scaling = s
+
+    @property
+    def Datatype(self):
+        return self._datatype
+
+    @property
+    def TempAddr(self):
+        return self._tempaddr
+
+    @property
+    def MemAddr(self):
+        return self._memaddr
+
+    @property
+    def Target(self):
+        return self._target

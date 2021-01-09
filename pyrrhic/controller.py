@@ -41,7 +41,8 @@ class PyrrhicController(object):
             self.save_prefs()
 
         self._defmgr = DefinitionManager(
-            ecuflashRoot=self._prefs['ECUFlashRepo'].Value
+            ecuflashRoot=self._prefs['ECUFlashRepo'].Value,
+            rrlogger_path=self._prefs['RRLoggerDef'].Value
         )
 
         self._roms = {}

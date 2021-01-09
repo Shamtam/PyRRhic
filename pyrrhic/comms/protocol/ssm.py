@@ -17,12 +17,14 @@ from enum import IntEnum
 from PyJ2534 import IoctlParameter
 
 from .base import ECUProtocol
+from ...common.structures import LogParam
+from ...common.enums import LoggerTarget
 from ..phy.j2534 import J2534PassThru_ISO9141
 
 class SSMTarget(IntEnum):
-    ECU     = 0x10
-    TCU     = 0x18
-    DIAG    = 0xf0
+    LoggerTarget.ECU        = 0x10
+    LoggerTarget.TCU        = 0x18
+    LoggerTarget.ECU_TCU    = 0xf0
 
 class SSMProtocol(ECUProtocol):
 

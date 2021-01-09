@@ -17,10 +17,12 @@ import logging
 import os
 import xml.etree.ElementTree as ET
 
+from ..comms.protocol import LoggerProtocol
 from .helpers import PyrrhicJSONSerializable
-from .structures import Scaling, TableDef
+from .structures import Scaling, TableDef, LogParam
 from .enums import (
-    DataType, UserLevel, _dtype_size_map, _ecuflash_to_dtype_map
+    DataType, LogParamType, LoggerTarget, UserLevel,
+    _dtype_size_map, _ecuflash_to_dtype_map, _rrlogger_to_dtype_map
 )
 
 _logger = logging.getLogger(__name__)
@@ -28,13 +30,24 @@ _logger = logging.getLogger(__name__)
 class DefinitionManager(object):
     """Overall container for definitions"""
 
-    def __init__(self, ecuflashRoot=None):
+    def __init__(self, ecuflashRoot=None, rrlogger_path=None):
         self._ecuflash_defs = {}
         self._ecuflash_search_tree = {}
         self._rrlogger_defs = {}
 
         if ecuflashRoot and os.path.isdir(ecuflashRoot):
             self.load_ecuflash_repository(ecuflashRoot)
+
+        if rrlogger_path and os.path.isfile(rrlogger_path):
+            self.load_rrlogger_file(rrlogger_path)
+
+        # initialize base logger definitions on initialization
+        for protocol in self._rrlogger_defs:
+            protocol_dict = self._rrlogger_defs[protocol]
+            if 'Base' in protocol_dict:
+                protocol_dict['Base'].resolve_dependencies(
+                    protocol_dict
+                )
 
     def load_ecuflash_repository(self, directory):
         """
@@ -112,15 +125,7 @@ class DefinitionManager(object):
                     )
                 )
 
-        # generate search tree, implemented as a nested dictionary
-        # outer dictionary is keyed by `internalidaddress`
-        # next level is keyed by length of the internalid value
-        # the final level is keyed by the bytes of the internalid
-        # if both tags are present, `internalidhex` is used over
-        # `internalidstring`
-        # e.g.: `A2UI001L` has an address of 0x2000, and only contains a
-        # `internalidstring` field. Thus, its def would be located at
-        # self._ecuflash_search_tree[0x2000][8]['A2UI001L']
+        # generate search tree. See `ECUFlashSearchTree` property
         tree = {}
         for d in self._ecuflash_defs.values():
             i = d.Info
@@ -160,6 +165,135 @@ class DefinitionManager(object):
             )
         )
 
+    def load_rrlogger_file(self, filepath):
+        self._rrlogger_defs = {}
+
+        _logger.info('Loading RomRaider Logger definition file {}'.format(
+            filepath
+        ))
+
+        root = ET.parse(filepath)
+        xml_protocols = [x for x in root.iter('protocol')]
+
+        _defs = {
+        }
+
+        for xml_protocol in xml_protocols:
+            protocol = xml_protocol.attrib.get('id', None)
+
+            if protocol not in [x.name for x in LoggerProtocol]:
+                _logger.warn(
+                    'Skipping loading of unknown protocol {}'.format(protocol)
+                )
+                continue
+
+            protocol = LoggerProtocol[protocol]
+
+            # initialize protocol container
+            if protocol not in _defs:
+                _defs[protocol] = {}
+                _defs[protocol]['Base'] = {}
+
+            if protocol == LoggerProtocol.SSM:
+                xml_params = xml_protocol.iter('parameter')
+                xml_switches = xml_protocol.iter('switch')
+                xml_dtcodes = xml_protocol.iter('dtcode')
+                xml_ecuparams = xml_protocol.iter('ecuparam')
+
+                _scalings = {}
+
+                # parameter and ecuparam elements
+                _defs[protocol]['Base']['params'] = {}
+                _defs[protocol]['Base']['scalings'] = {}
+                for param in list(xml_params) + list(xml_ecuparams):
+
+                    # handle calculated parameters
+                    if list(param.iter('depends')):
+                        continue # TODO: skip these for now...
+
+                    ident = param.attrib['id']
+                    xml_conversions = param.iter('conversion')
+
+                    # extract scalings
+                    param_scalings = {
+                        '{}_Conv{}'.format(ident, idx): conv
+                        for idx, conv in enumerate(xml_conversions)
+                    }
+
+                    # store parameter information to base definition
+                    _defs[protocol]['Base']['params'][ident] = {
+                        'param': param,
+                        'scalings': param_scalings
+                    }
+
+                    # create definition key for each specific ECU
+                    if param.tag == 'ecuparam':
+                        xml_ecus = param.iter('ecu')
+                        for ecu in xml_ecus:
+                            ids = ecu.attrib['id'].upper().split(',')
+                            addrs = ecu.findall('address')
+
+                            for ecuid in ids:
+                                if ecuid not in _defs[protocol]:
+                                    _defs[protocol][ecuid] = {}
+                                    _defs[protocol][ecuid]['params'] = {}
+                                    _defs[protocol][ecuid]['scalings'] = {}
+
+                                _defs[protocol][ecuid]['params'][ident] = {
+                                    'param': param,
+                                    'scalings': param_scalings,
+                                    'addrs': addrs,
+                                }
+
+                    _defs[protocol]['Base']['scalings'].update(param_scalings)
+
+                    _scalings.update(param_scalings)
+
+                _defs[protocol]['Base']['switches'] = {
+                    param.attrib['id']: param for param in xml_switches
+                }
+
+                _defs[protocol]['Base']['dtcodes'] = {
+                    param.attrib['id']: param for param in xml_dtcodes
+                }
+
+            elif protocol == LoggerProtocol.OBD:
+                pass
+
+            elif protocol == LoggerProtocol.DS2:
+                pass
+
+            elif protocol == LoggerProtocol.NCS:
+                pass
+
+        # instantiate RRLoggerDef instances
+        for pkey in _defs:
+
+            if pkey not in self._rrlogger_defs:
+                self._rrlogger_defs[pkey] = {}
+
+            for d in _defs[pkey]:
+                dinfo = _defs[pkey][d]
+                parents = {} if d == 'Base' else {'Base': None}
+                params = dinfo.get('params', {})
+                scalings = dinfo.get('scalings', {})
+                switches = dinfo.get('switches', {})
+                dtcodes = dinfo.get('dtcodes', {})
+                self._rrlogger_defs[pkey][d] = RRLoggerDef(
+                    d,
+                    parents=parents,
+                    scalings=scalings,
+                    parameters=params,
+                    switches=switches,
+                    dtcodes=dtcodes
+                )
+
+            _logger.info(
+                'Loaded {} RomRaider Logger {} protocol definitions'.format(
+                    len(self._rrlogger_defs[pkey]), pkey.name
+                )
+            )
+
     @property
     def ECUFlashDefs(self):
         "`dict` of {`xmlid`: `<ECUFlashDef>`} key-val pairs"
@@ -167,43 +301,64 @@ class DefinitionManager(object):
 
     @property
     def ECUFlashSearchTree(self):
+        """Nested `dict` search tree to quickly locate an ECUFlash def
+
+        Outer dictionary is keyed by `internalidaddress`, the next level
+        is keyed by length of the internalid value, and the the final
+        level is keyed by the bytes of the internalid. If both tags are
+        present, `internalidhex` is used over `internalidstring`.
+
+        e.g.: `A2UI001L` has an address of 0x2000, and only contains a
+        `internalidstring` field. Thus, its def would be located at
+        self._ecuflash_search_tree[0x2000][8]['A2UI001L']
+        """
         return self._ecuflash_search_tree
+
+    @property
+    def RRLoggerDefs(self):
+        "`dict` of {`identifier`: `<RRLoggerDef>`} key-val pairs"
+        return self._rrlogger_defs
 
     @property
     def IsValid(self):
         return bool(self._ecuflash_defs)
 
 class ECUFlashDef(object):
-    """
-    Encompasses all portions of an ECUFlash definition file.
-
-    Use keywords to seed the definition during init. Keywords described
-    below are used to seed the corresponding portions of the definition.
-    Any other keywords are interpreted as `romid` elements. These
-    keywords all match the tag names used in ECUFlash. Any extra keys
-    that don't match a known ECUFlash `romid` element is ignored.
-
-    ## Note: Instantiation does not initialize the instance!
-    ## See `resolve_dependencies` for more information.
-
-    Arguments:
-     - identifier - Unique identification string for this def
-
-    Keywords [Default]:
-    - parents [`{}`] - `dict` of `ECUFlashDef`s keyed by their unique
-        identifier. If the value is `None`, it will be resolved during
-        dependency resolution.
-
-    - scalings [`{}`] - `dict` of scaling definitions. The dict should
-        be keyed by the name of the corresponding scaling, and the value
-        for each key is a `Scaling`.
-
-    - tables [`{}`] - `dict` of table definitions. Each element can
-        either be a `TableDef`, or a dictionary containing the necessary
-        elements to instantiate a `TableDef` during dependency resolution.
-    """
+    "Encompasses all portions of an ECUFlash definition file."
 
     def __init__(self, identifier, **kwargs):
+        """Initializer.
+
+        Use keywords to seed the definition during init.
+
+        Keywords described below are used to seed the corresponding
+        portions of the definition. For these keywords, if the value for
+        a given dict key is `None`, it will be resolved during
+        dependency resolution.
+
+        Any other keywords are interpreted as `romid` elements. These
+        keywords all match the tag names used in ECUFlash. Any extra
+        keys that don't match a known ECUFlash `romid` element is ignored.
+
+        ## Note: Instantiation does not initialize the instance!
+        ## See `resolve_dependencies` for more information.
+
+        Arguments:
+        - identifier - Unique identification string for this def
+
+        Keywords [Default]:
+        - parents [`{}`] - `dict` of `ECUFlashDef`s keyed by their unique
+            identifier. If the value is `None`, it will be resolved during
+            dependency resolution.
+
+        - scalings [`{}`] - `dict` of scaling definitions. The dict should
+            be keyed by the name of the corresponding scaling, and the value
+            for each key is a `Scaling`.
+
+        - tables [`{}`] - `dict` of table definitions. Each element can
+            either be a `TableDef`, or a dictionary containing the necessary
+            elements to instantiate a `TableDef` during dependency resolution.
+        """
         self._identifier = identifier
 
         # remove any unneeded/extraneous romid elements
@@ -211,7 +366,7 @@ class ECUFlashDef(object):
         kwargs.pop('include', None)
 
         self._parents = kwargs.pop('parents', {})
-        self._scalings = kwargs.pop('scalings', {})
+        self._scalings = kwargs.pop('scalings',{})
         self._tables = kwargs.pop('tables', {})
 
         self._all_scalings = {}
@@ -418,13 +573,7 @@ class ECUFlashDef(object):
 
         `defs_dict` should be a `dict` containing all of the definitions
         in the repository. It is keyed by the `xmlid` of each definition,
-        and each value is either an `ECUFlashDef` or another `dict` with
-        these keys:
-        - `path`: absolute path of the original xml file of the definition
-        - `root`: raw `ElementTree` of the definition
-        - `parents`: list of `xmlid`s indicating any inherited definitions
-        - `scalings`: `dict` of `Scaling`s contained in the definition
-        - `tables`: `dict` of `TableDef`s contained in the definition
+        and each value should be an `ECUFlashDef`.
 
         In terms of hierarchy, the order of the `include` elements is
         considered from latest to earliest. In other words, if a
@@ -603,6 +752,298 @@ class ECUFlashDef(object):
     @property
     def AllTables(self):
         return self._all_tables
+
+class RRLoggerDef(object):
+    "Encompasses portions of a RomRaider Logger definition for a specific ECU"
+
+    def __init__(self, identifier, **kwargs):
+        """Initializer.
+
+        Use keywords to seed the definition during init.
+
+        Keywords described below are used to seed the corresponding
+        portions of the definition. For all keywords, if the value for
+        a given dict key is `None`, it will be resolved during
+        dependency resolution.
+
+        ## Note: Instantiation does not initialize the instance!
+        ## See `resolve_dependencies` for more information.
+
+        Arguments:
+        - identifier - Unique identification string for this def
+
+        Keywords [Default]:
+        - parents [`{}`] - `dict` of `RRLoggerDef`s keyed by their
+            unique identifier
+
+        - scalings [`{}`] - `dict` of scaling definitions. The dict
+            should be keyed by the name of the corresponding scaling,
+            and the value for each key is a `Scaling`
+
+        - parameters [`{}`] - `dict` of logger parameters containing all
+            `parameter` and `ecuparam` definitions. The dict should be
+            keyed by the identifier of the parameter, and the value for
+            each key is a `LogParam`
+
+        - switches [`{}`] - `dict` of logger switches. The dict should
+            be keyed by the identifier of the switch, and the value for
+            each key is a `LogParam`
+
+        - dtcodes [`{}`] - `dict` of logger dtcodes. The dict should
+            be keyed by the identifier of the dtcode, and the value for
+            each key is a `LogParam`
+        """
+        self._identifier = identifier
+
+        self._parents = kwargs.pop('parents', {})
+        self._scalings = kwargs.pop('scalings',{})
+        self._parameters = kwargs.pop('parameters', {})
+        self._switches = kwargs.pop('switches', {})
+        self._dtcodes = kwargs.pop('dtcodes', {})
+
+        self._all_scalings = {}
+        self._all_parameters = {}
+
+        self._initialized = False
+
+    def _scaling_from_xml(self, name, conv):
+        """
+        Instantiate a `Scaling` object from an `xml.etree.ElementTree.Element`
+
+        Arguments:
+        - `name`: `str` specifying the name for this scaling
+        - `conv`: `xml.etree.ElementTree.Element` of the `conversion`
+            tag to be used to instantiate the resulting `Scaling`
+        """
+        props = {}
+        props['xml'] = conv
+        props['units'] = conv.attrib.get('units', '')
+        props['disp_expr'] = conv.attrib.get('expr', 'x')
+        props['min'] = conv.attrib.get('gauge_min', None)
+        props['max'] = conv.attrib.get('gauge_max', None)
+
+        return Scaling(name, self, **props)
+
+    def _param_from_xml(self, param):
+        """
+        Instantiate a `LogParam` object from an `xml.etree.ElementTree.Element`
+        """
+
+    def resolve_dependencies(self, defs_dict):
+        """
+        Resolve all portions of the definition into their proper encapsulations.
+
+        Because definitions can be hierarchical, when loading a
+        RomRaider Logger XML file, it is necessary to first load and
+        seed all definitions with all of the data stored in the original
+        XML file, then resolve all portions into their final
+        encapsulating object (i.e. `Scaling` or `LogParam`), taking into
+        account any hierarchy.
+
+        `defs_dict` should be a `dict` containing all of the definitions
+        contained in the same logger protocol as this definition. It is
+        keyed by the `Identifier` of each definition, and each value
+        should be a `RRLoggerDef`.
+        """
+        # already initialized, nothing to resolve
+        if self._initialized:
+            return
+
+        _logger.debug('Resolving RomRaider Logger definition {}'.format(
+            self._identifier
+        ))
+
+        # resolve parents
+        for par in self._parents:
+            if par not in defs_dict:
+                raise ValueError(
+                    'Unable to resolve parent {} for {}'.format(
+                        par, self._identifier
+                    )
+                )
+            else:
+                self._parents[par] = defs_dict[par]
+
+        for par in self._parents.values():
+            par.resolve_dependencies(defs_dict)
+
+        # resolve scalings
+        scale_names = list(filter(
+            lambda x: not isinstance(self._scalings[x], Scaling), self._scalings
+        ))
+        for s in scale_names:
+            scale = self._scalings[s]
+            self._scalings[s] = self._scaling_from_xml(s, scale)
+
+        self._all_scalings = {k: v for k, v in self._scalings.items()}
+
+        # add all scalings from all parents to this definition
+        if self._parents:
+            for parent in reversed(self._parents.values()):
+                for sname, sc in parent.AllScalings.items():
+                    if sname not in self._all_scalings:
+                        self._all_scalings[sname] = sc
+
+        # resolve parameters
+        param_names = list(
+            filter(
+                lambda x: not isinstance(self._parameters[x], LogParam),
+                self._parameters
+            )
+        )
+        for pname in param_names:
+            pinfo = self._parameters[pname]
+            xml_param = pinfo['param']
+            xml_scalings = pinfo.get('scalings', {})
+            xml_addrs = pinfo.get('addrs', [])
+
+            ptype = (
+                LogParamType.STD_PARAM if xml_param.tag == 'parameter'
+                else LogParamType.EXT_PARAM
+            )
+
+            kw = {}
+            kw['Name'] = xml_param.attrib['name']
+            kw['Description'] = xml_param.attrib['desc']
+            kw['Target'] = LoggerTarget(int(xml_param.attrib['target']))
+
+            byteidx = xml_param.attrib.get('ecubyteindex', None)
+            bitidx = xml_param.attrib.get('ecubit', None)
+
+            if byteidx:
+                kw['ECUByteIndex'] = int(byteidx)
+            if bitidx:
+                kw['ECUBit'] = int(bitidx)
+
+            # determine addresses and byte/bit indices
+            if ptype == LogParamType.STD_PARAM:
+                kw['Addresses'] = [
+                    int(x.text, base=16) for x in xml_param.findall('address')
+                ]
+
+            elif ptype == LogParamType.EXT_PARAM and 'Base' not in self.Identifier:
+                kw['Addresses'] = [int(x.text, base=16) for x in xml_addrs]
+
+            # determine datatype from conversions with a `storagetype` specified
+            convs = list(
+                filter(lambda x: 'storagetype' in x.attrib, xml_scalings.values())
+            )
+            if convs:
+                conv = convs[0]
+                kw['Datatype'] = _rrlogger_to_dtype_map[conv.attrib['storagetype']]
+
+            # try and determine datatype from address if necessary
+            else:
+                length_addrs = list(filter(
+                    lambda x: 'length' in x.attrib,
+                    xml_param.findall('address')
+                ))
+                if length_addrs:
+                    length = int(length_addrs[0].attrib['length'])
+                else:
+                    length = 1
+
+                _length_to_dtype_map = {
+                    1: DataType.UINT8,
+                    2: DataType.UINT16,
+                    4: DataType.FLOAT
+                }
+
+                kw['Datatype'] = _length_to_dtype_map[length]
+
+                _sc_name = '{}_Conv0'.format(pname)
+                kw['Scaling'] = self._all_scalings.get(_sc_name, None)
+
+            self._parameters[pname] = LogParam(self, pname, ptype, **kw)
+
+        self._all_parameters = {k: v for k, v in self._parameters.items()}
+
+        # resolve switches
+        switch_names = list(
+            filter(
+                lambda x: not isinstance(self._switches[x], LogParam),
+                self._switches
+            )
+        )
+        for pname in switch_names:
+            xml_switch = self._switches[pname]
+            ptype = LogParamType.SWITCH
+
+            kw = {}
+            kw['Name'] = xml_switch.attrib['name']
+            kw['Description'] = xml_switch.attrib['desc']
+            kw['Target'] = LoggerTarget(int(xml_switch.attrib['target']))
+
+            byteidx = xml_switch.attrib.get('ecubyteindex', None)
+            bitidx = xml_switch.attrib['bit']
+
+            if byteidx:
+                kw['ECUByteIndex'] = int(byteidx)
+            if bitidx:
+                kw['ECUBit'] = int(bitidx)
+
+            kw['Datatype'] = DataType(kw['ECUBit'])
+            kw['Addresses'] = [int(xml_switch.attrib['byte'], base=16)]
+
+            self._switches[pname] = LogParam(self, pname, ptype, **kw)
+
+        self._all_parameters.update({k: v for k, v in self._switches.items()})
+
+        # resolve dtcodes
+        dtcode_names = list(
+            filter(
+                lambda x: not isinstance(self._dtcodes[x], LogParam),
+                self._dtcodes
+            )
+        )
+        for pname in dtcode_names:
+            xml_dtcode = self._dtcodes[pname]
+            ptype = LogParamType.DTCODE
+
+            kw = {}
+            kw['Name'] = xml_dtcode.attrib['name']
+            kw['Description'] = xml_dtcode.attrib['desc']
+            kw['Target'] = LoggerTarget.ECU
+            kw['Datatype'] = DataType(int(xml_dtcode.attrib['bit']))
+            kw['TempAddr'] = int(xml_dtcode.attrib['tmpaddr'], base=16)
+            kw['MemAddr'] = int(xml_dtcode.attrib['memaddr'], base=16)
+
+            self._dtcodes[pname] = LogParam(self, pname, ptype, **kw)
+
+        self._all_parameters.update({k: v for k, v in self._dtcodes.items()})
+
+        # add all parameters from all parents to this definition
+        if self._parents:
+            for parent in reversed(self._parents.values()):
+                for pid, par in parent.AllParameters.items():
+                    if pid not in self._all_parameters:
+                        self._all_parameters[pid] = par
+
+        self._initialized = True
+
+    @property
+    def Identifier(self):
+        return self._identifier
+
+    @property
+    def Parents(self):
+        return self._parents
+
+    @property
+    def Scalings(self):
+        return self._scalings
+
+    @property
+    def AllScalings(self):
+        return self._all_scalings
+
+    @property
+    def Parameters(self):
+        return self._parameters
+
+    @property
+    def AllParameters(self):
+        return self._all_parameters
 
 class ROMDefinition(PyrrhicJSONSerializable):
     def __init__(self, EditorDef=None, LoggerDef=None):

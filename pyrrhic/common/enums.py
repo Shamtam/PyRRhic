@@ -13,16 +13,24 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from enum import Enum, Flag, auto
+from enum import IntEnum, auto
 
-class UserLevel(Enum):
+class UserLevel(IntEnum):
     Beginner        = 1
     Intermediate    = 2
     Advanced        = 3
     Developer       = 4
     Superdev        = 5 # not listed in ECUFlash GUI, but used in XMLs
 
-class DataType(Enum):
+class DataType(IntEnum):
+    BIT0    = 0
+    BIT1    = 1
+    BIT2    = 2
+    BIT3    = 3
+    BIT4    = 4
+    BIT5    = 5
+    BIT6    = 6
+    BIT7    = 7
     UINT8   = auto()
     UINT16  = auto()
     UINT32  = auto()
@@ -33,7 +41,16 @@ class DataType(Enum):
     BLOB    = auto()
     STATIC  = auto()
 
+# `None` valued keys shouldn't ever be used
 _dtype_size_map = {
+    DataType.BIT0:   None,
+    DataType.BIT1:   None,
+    DataType.BIT2:   None,
+    DataType.BIT3:   None,
+    DataType.BIT4:   None,
+    DataType.BIT5:   None,
+    DataType.BIT6:   None,
+    DataType.BIT7:   None,
     DataType.UINT8:  1,
     DataType.UINT16: 2,
     DataType.UINT32: 4,
@@ -41,11 +58,20 @@ _dtype_size_map = {
     DataType.INT16:  2,
     DataType.INT32:  4,
     DataType.FLOAT:  4,
-    DataType.BLOB:   None,   # shouldn't ever be used
-    DataType.STATIC: None,   # shouldn't ever be used
+    DataType.BLOB:   None,
+    DataType.STATIC: None,
 }
 
+# `None` valued keys shouldn't ever be used
 _dtype_struct_map = {
+    DataType.BIT0:   None,
+    DataType.BIT1:   None,
+    DataType.BIT2:   None,
+    DataType.BIT3:   None,
+    DataType.BIT4:   None,
+    DataType.BIT5:   None,
+    DataType.BIT6:   None,
+    DataType.BIT7:   None,
     DataType.UINT8:  'B',
     DataType.UINT16: 'H',
     DataType.UINT32: 'I',
@@ -54,7 +80,7 @@ _dtype_struct_map = {
     DataType.INT32:  'i',
     DataType.FLOAT:  'f',
     DataType.BLOB:   'B',
-    DataType.STATIC: None,   # shouldn't ever be used
+    DataType.STATIC: None,
 }
 
 _ecuflash_to_dtype_map = {
@@ -67,16 +93,25 @@ _ecuflash_to_dtype_map = {
     'float'     : DataType.FLOAT,
     'bloblist'  : DataType.BLOB,
 }
+_rrlogger_to_dtype_map = {
+    'uint8'     : DataType.UINT8,
+    'uint16'    : DataType.UINT16,
+    'uint32'    : DataType.UINT32,
+    'int8'      : DataType.INT8,
+    'int16'     : DataType.INT16,
+    'int32'     : DataType.INT32,
+    'float'     : DataType.FLOAT,
+}
 
 # these map to the corresponding jump offsets used in a Subaru ROM
-class TableDataType(Enum):
+class TableDataType(IntEnum):
     DATA_4B = 0x00
     DATA_2B = 0x04
     DATA_1B = 0x08
     DATA_U1 = 0x0C # not sure what/if these are ever used
     DATA_U2 = 0x10 # not sure what/if these are ever used
 
-class ByteOrder(Enum):
+class ByteOrder(IntEnum):
     BIG_ENDIAN = auto()
     LITTLE_ENDIAN = auto()
 
@@ -84,3 +119,14 @@ _byte_order_struct_map = {
     ByteOrder.BIG_ENDIAN : '>',
     ByteOrder.LITTLE_ENDIAN : '<',
 }
+
+class LoggerTarget(IntEnum):
+    ECU     = 1
+    TCU     = 2
+    ECU_TCU = 3
+
+class LogParamType(IntEnum):
+    STD_PARAM   = auto()
+    EXT_PARAM   = auto()
+    SWITCH      = auto()
+    DTCODE      = auto()
