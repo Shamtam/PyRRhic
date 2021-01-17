@@ -17,11 +17,10 @@ import logging
 import os
 import xml.etree.ElementTree as ET
 
-from ..comms.protocol import LoggerProtocol
 from .helpers import PyrrhicJSONSerializable
 from .structures import Scaling, TableDef, LogParam
 from .enums import (
-    DataType, LogParamType, LoggerTarget, UserLevel,
+    DataType, LogParamType, LoggerEndpoint, LoggerProtocol, UserLevel,
     _dtype_size_map, _ecuflash_to_dtype_map, _rrlogger_to_dtype_map
 )
 
@@ -803,6 +802,8 @@ class RRLoggerDef(object):
 
         self._all_scalings = {}
         self._all_parameters = {}
+        self._all_switches = {}
+        self._all_dtcodes = {}
 
         self._initialized = False
 
@@ -905,7 +906,7 @@ class RRLoggerDef(object):
             kw = {}
             kw['Name'] = xml_param.attrib['name']
             kw['Description'] = xml_param.attrib['desc']
-            kw['Target'] = LoggerTarget(int(xml_param.attrib['target']))
+            kw['Target'] = LoggerEndpoint(int(xml_param.attrib['target']))
 
             byteidx = xml_param.attrib.get('ecubyteindex', None)
             bitidx = xml_param.attrib.get('ecubit', None)
@@ -958,6 +959,13 @@ class RRLoggerDef(object):
 
         self._all_parameters = {k: v for k, v in self._parameters.items()}
 
+        # add all parameters from all parents to this definition
+        if self._parents:
+            for parent in reversed(self._parents.values()):
+                for pid, par in parent.AllParameters.items():
+                    if pid not in self._all_parameters:
+                        self._all_parameters[pid] = par
+
         # resolve switches
         switch_names = list(
             filter(
@@ -972,7 +980,7 @@ class RRLoggerDef(object):
             kw = {}
             kw['Name'] = xml_switch.attrib['name']
             kw['Description'] = xml_switch.attrib['desc']
-            kw['Target'] = LoggerTarget(int(xml_switch.attrib['target']))
+            kw['Target'] = LoggerEndpoint(int(xml_switch.attrib['target']))
 
             byteidx = xml_switch.attrib.get('ecubyteindex', None)
             bitidx = xml_switch.attrib['bit']
@@ -987,7 +995,14 @@ class RRLoggerDef(object):
 
             self._switches[pname] = LogParam(self, pname, ptype, **kw)
 
-        self._all_parameters.update({k: v for k, v in self._switches.items()})
+        self._all_switches.update({k: v for k, v in self._switches.items()})
+
+        # add all switches from all parents to this definition
+        if self._parents:
+            for parent in reversed(self._parents.values()):
+                for pid, par in parent.AllSwitches.items():
+                    if pid not in self._all_switches:
+                        self._all_switches[pid] = par
 
         # resolve dtcodes
         dtcode_names = list(
@@ -1003,23 +1018,36 @@ class RRLoggerDef(object):
             kw = {}
             kw['Name'] = xml_dtcode.attrib['name']
             kw['Description'] = xml_dtcode.attrib['desc']
-            kw['Target'] = LoggerTarget.ECU
+            kw['Target'] = LoggerEndpoint.ECU
             kw['Datatype'] = DataType(int(xml_dtcode.attrib['bit']))
             kw['TempAddr'] = int(xml_dtcode.attrib['tmpaddr'], base=16)
             kw['MemAddr'] = int(xml_dtcode.attrib['memaddr'], base=16)
 
             self._dtcodes[pname] = LogParam(self, pname, ptype, **kw)
 
-        self._all_parameters.update({k: v for k, v in self._dtcodes.items()})
+        self._all_dtcodes.update({k: v for k, v in self._dtcodes.items()})
 
-        # add all parameters from all parents to this definition
+        # add all dtcodes from all parents to this definition
         if self._parents:
             for parent in reversed(self._parents.values()):
-                for pid, par in parent.AllParameters.items():
-                    if pid not in self._all_parameters:
-                        self._all_parameters[pid] = par
+                for pid, par in parent.AllDTCodes.items():
+                    if pid not in self._all_dtcodes:
+                        self._all_dtcodes[pid] = par
 
         self._initialized = True
+
+    def resolve_valid_params(self, capabilities):
+        for par in list(self._all_parameters.values()) + list(self._all_switches.values()):
+            ptype = par.ParamType
+            byte_idx = par.ByteIndex
+            bit_idx = par.BitIndex
+            if byte_idx is not None and bit_idx is not None:
+                if capabilities[byte_idx] >> bit_idx & 0x01 == 0x01:
+                    par.set_supported()
+            elif ptype == LogParamType.EXT_PARAM and par.Addresses:
+                par.set_supported()
+            else:
+                par.set_unsupported()
 
     @property
     def Identifier(self):
@@ -1042,8 +1070,24 @@ class RRLoggerDef(object):
         return self._parameters
 
     @property
+    def Switches(self):
+        return self._switches
+
+    @property
+    def DTCodes(self):
+        return self._dtcodes
+
+    @property
     def AllParameters(self):
         return self._all_parameters
+
+    @property
+    def AllSwitches(self):
+        return self._all_switches
+
+    @property
+    def AllDTCodes(self):
+        return self._all_dtcodes
 
 class ROMDefinition(PyrrhicJSONSerializable):
     def __init__(self, EditorDef=None, LoggerDef=None):

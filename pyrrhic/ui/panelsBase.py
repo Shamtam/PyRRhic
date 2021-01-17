@@ -14,10 +14,10 @@ import wx.dataview
 import wx.grid
 
 ###########################################################################
-## Class bLogPanel
+## Class bConsolePanel
 ###########################################################################
 
-class bLogPanel ( wx.Panel ):
+class bConsolePanel ( wx.Panel ):
 
     def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
         wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
@@ -227,6 +227,112 @@ class bTablePanel ( ScrolledWindow ):
 
     # Virtual event handlers, overide them in your derived class
     def OnClose( self, event ):
+        event.Skip()
+
+
+###########################################################################
+## Class bLoggerParamPanel
+###########################################################################
+
+class bLoggerParamPanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._label_sel_pars = wx.StaticText( self, wx.ID_ANY, u"Selected Parameters", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._label_sel_pars.Wrap( -1 )
+
+        _sizer.Add( self._label_sel_pars, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 5 ), wx.ALIGN_BOTTOM|wx.ALIGN_CENTER_HORIZONTAL, 5 )
+
+        self._selected_dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
+        self._selected_dvc.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+
+        _sizer.Add( self._selected_dvc, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 5 ), wx.EXPAND, 5 )
+
+        self._but_add = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|wx.BORDER_NONE )
+
+        self._but_add.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_UP, wx.ART_BUTTON ) )
+        self._but_add.Enable( False )
+
+        _sizer.Add( self._but_add, wx.GBPosition( 2, 1 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._but_rem = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|wx.BORDER_NONE )
+
+        self._but_rem.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_DOWN, wx.ART_BUTTON ) )
+        self._but_rem.Enable( False )
+
+        _sizer.Add( self._but_rem, wx.GBPosition( 2, 3 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._available_dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
+        self._available_dvc.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+
+        _sizer.Add( self._available_dvc, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 5 ), wx.EXPAND, 5 )
+
+        self._label_av_pars = wx.StaticText( self, wx.ID_ANY, u"Available Parameters", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._label_av_pars.Wrap( -1 )
+
+        _sizer.Add( self._label_av_pars, wx.GBPosition( 4, 0 ), wx.GBSpan( 1, 5 ), wx.ALIGN_CENTER_HORIZONTAL|wx.ALIGN_TOP, 5 )
+
+
+        _sizer.AddGrowableCol( 0 )
+        _sizer.AddGrowableCol( 2 )
+        _sizer.AddGrowableCol( 4 )
+        _sizer.AddGrowableRow( 1 )
+        _sizer.AddGrowableRow( 3 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+        # Connect Events
+        self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClosePane )
+        self._selected_dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_ACTIVATED, self.OnToggle, id = wx.ID_ANY )
+        self._available_dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_ACTIVATED, self.OnToggle, id = wx.ID_ANY )
+
+    def __del__( self ):
+        pass
+
+
+    # Virtual event handlers, overide them in your derived class
+    def OnClosePane( self, event ):
+        event.Skip()
+
+    def OnToggle( self, event ):
+        event.Skip()
+
+
+
+###########################################################################
+## Class bLoggerGaugePanel
+###########################################################################
+
+class bLoggerGaugePanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+        # Connect Events
+        self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClosePane )
+
+    def __del__( self ):
+        pass
+
+
+    # Virtual event handlers, overide them in your derived class
+    def OnClosePane( self, event ):
         event.Skip()
 
 

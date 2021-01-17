@@ -20,18 +20,29 @@ import wx
 
 from .common import _log_file, _prefs_dir
 from .common.logging import _file_formatter
-from .ui.MainFrame import MainFrame
+from .ui.EditorFrame import EditorFrame
+from .ui.LoggerFrame import LoggerFrame
+from .controller import PyrrhicController
 
-_debug = True
+from . import _debug
 
 class PyrrhicApp(wx.App):
     def OnInit(self):
-        self.frame = MainFrame(None)
-        self.SetTopWindow(self.frame)
-        self.frame.Show()
+        # TODO: make editor/logger independent based on startup args
+        self.controller = PyrrhicController()
+
+        self.editor_frame = EditorFrame(None, self.controller)
+        self.logger_frame = LoggerFrame(self.editor_frame, self.controller)
+        self.controller.EditorFrame = self.editor_frame
+        self.controller.LoggerFrame = self.logger_frame
+
+        self.SetTopWindow(self.editor_frame)
+        self.editor_frame.Show()
+        self.logger_frame.Show()
         return True
 
 with open(_log_file, 'w') as fp:
+
     # setup root logging
     _root_log = logging.getLogger()
     _handler = logging.FileHandler(_log_file)

@@ -13,23 +13,8 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from ... import _debug
-from enum import IntEnum, auto
-from .ssm import protocols as ssm_protocols
+from .ssm_mock import MockSSM
 
-def get_all_protocols():
-    """Get all configured protocols.
-
-    Returns a `dict` with {`str`: `ECUProtocol`} key-val pairs, where
-    the keys are the display name of the protocol, and the values are
-    the appropriate subclass of `ECUProtocol`.
-    """
-    protocols = {}
-
-    protocols.update(ssm_protocols)
-
-    if _debug:
-        from ...tests.comms.protocol import _protocols as test_protocols
-        protocols.update(test_protocols)
-
-    return protocols
+_protocols = {
+    'Mock SSM': MockSSM
+}

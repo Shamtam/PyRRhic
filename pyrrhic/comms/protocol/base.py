@@ -15,9 +15,40 @@
 
 class ECUProtocol(object):
 
-    def __init__(self):
-        pass
+    # tuple of phy classes supported by this protocol
+    _supported_phy = ()
 
-    def ecu_init(self):
-        "Should return ECU identification information"
+    # display name of this protocol in the UI
+    _display_name = ''
+
+    def __init__(self, interface_name, phy_cls, **kwargs):
+        """Base initializer for ECU protocol encapsulations
+
+        Keywords are specific to the particular `ECUProtocol` subclass
+
+        Arguments:
+        - `interface_name`: `str` containing the `CommunicationDevice`
+            specific name used to open the underlying device
+        - `phy_class`: `CommunicationDevice` subclass to be used to
+            handle comms with the ECU
+        """
+        self._phy = None
+        self._protocol = None
+
+    def identify_target(self, target):
+        """Returns endpoint identification information
+
+        Arguments:
+        - `target`: `LoggerTarget` specifying the target to init/identify
+        """
         raise NotImplementedError
+
+    @property
+    def Protocol(self):
+        "Returns the `LoggerProtocol` implemented by this instance"
+        return self._protocol
+
+    @property
+    def Interface(self):
+        "Returns the underlying `CommunicationDevice` subclass"
+        return self._phy

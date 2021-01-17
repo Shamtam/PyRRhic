@@ -120,7 +120,13 @@ _byte_order_struct_map = {
     ByteOrder.LITTLE_ENDIAN : '<',
 }
 
-class LoggerTarget(IntEnum):
+class LoggerProtocol(IntEnum):
+    SSM = auto()
+    #TODO: OBD = auto()
+    #TODO: DS2 = auto()
+    #TODO: NCS = auto()
+
+class LoggerEndpoint(IntEnum):
     ECU     = 1
     TCU     = 2
     ECU_TCU = 3

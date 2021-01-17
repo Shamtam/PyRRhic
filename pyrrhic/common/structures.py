@@ -21,7 +21,7 @@ from math import prod
 from xml.etree.ElementTree import Element
 
 from .enums import (
-    ByteOrder, DataType, LogParamType, UserLevel,
+    ByteOrder, DataType, UserLevel,
     _byte_order_struct_map, _dtype_struct_map, _dtype_size_map
 )
 
@@ -382,7 +382,7 @@ class RomTable(object):
         self._panel = f
 
 class LogParam(object):
-    "Base class for logging elements"
+    "Base class for logger elements"
 
     def __init__(self, parent, identifier, ptype, **kwargs):
         self._parent = parent
@@ -398,11 +398,25 @@ class LogParam(object):
         self._tempaddr = kwargs.pop('TempAddr', None)
         self._memaddr = kwargs.pop('MemAddr', None)
         self._target = kwargs.pop('Target', None)
+        self._enabled = False
+        self._supported = False
 
     def __repr__(self):
         return '<{} {}: {}>'.format(
             self._ptype.name, self._identifier, self._name
         )
+
+    def enable(self):
+        self._enabled = True
+
+    def disable(self):
+        self._enabled = False
+
+    def set_supported(self):
+        self._supported = True
+
+    def set_unsupported(self):
+        self._supported = False
 
     @property
     def Parent(self):
@@ -464,3 +478,13 @@ class LogParam(object):
     @property
     def Target(self):
         return self._target
+
+    @property
+    def Enabled(self):
+        return self._enabled
+
+    @property
+    def Valid(self):
+        if self._addrs and self._supported:
+            return bool(len(self._addrs))
+        return False

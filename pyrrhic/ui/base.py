@@ -8,7 +8,10 @@
 ###########################################################################
 
 from .TreePanel import TreePanel
-from .LogPanel import LogPanel
+from .ConsolePanel import ConsolePanel
+from .BaseFrame import BaseFrame
+from .LoggerParamPanel import LoggerParamPanel
+from .LoggerGaugePanel import LoggerGaugePanel
 import wx
 import wx.xrc
 import wx.propgrid as pg
@@ -82,13 +85,13 @@ class PrefsDialog ( wx.Dialog ):
 
 
 ###########################################################################
-## Class bMainFrame
+## Class bEditorFrame
 ###########################################################################
 
-class bMainFrame ( wx.Frame ):
+class bEditorFrame ( BaseFrame ):
 
     def __init__( self, parent ):
-        wx.Frame.__init__ ( self, parent, id = wx.ID_ANY, title = u"PyRRhic", pos = wx.DefaultPosition, size = wx.Size( 800,600 ), style = wx.DEFAULT_FRAME_STYLE|wx.RESIZE_BORDER|wx.TAB_TRAVERSAL )
+        BaseFrame.__init__ ( self, parent, id = wx.ID_ANY, title = u"PyRRhic Editor", pos = wx.DefaultPosition, size = wx.Size( 800,600 ), style = wx.DEFAULT_FRAME_STYLE|wx.RESIZE_BORDER|wx.TAB_TRAVERSAL )
 
         self.SetSizeHints( wx.DefaultSize, wx.DefaultSize )
         self.m_mgr = wx.aui.AuiManager()
@@ -126,8 +129,8 @@ class bMainFrame ( wx.Frame ):
         self._tree_panel = TreePanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
         self.m_mgr.AddPane( self._tree_panel, wx.aui.AuiPaneInfo() .Name( u"RomDataPane" ).Left() .Caption( u"ROM Data" ).CloseButton( False ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.DefaultSize ).BottomDockable( False ).TopDockable( False ).MinSize( wx.Size( 400,-1 ) ) )
 
-        self._log_panel = LogPanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        self.m_mgr.AddPane( self._log_panel, wx.aui.AuiPaneInfo() .Name( u"LogPane" ).Center() .Caption( u"Log" ).CloseButton( False ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.Size( -1,-1 ) ).Row( 0 ).Position( 0 ) )
+        self._console_panel = ConsolePanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
+        self.m_mgr.AddPane( self._console_panel, wx.aui.AuiPaneInfo() .Name( u"ConsolePane" ).Center() .Caption( u"Console" ).CloseButton( False ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.Size( -1,-1 ) ).Row( 0 ).Position( 0 ) )
 
 
         self.m_mgr.Update()
@@ -159,6 +162,81 @@ class bMainFrame ( wx.Frame ):
         event.Skip()
 
     def OnViewLog( self, event ):
+        event.Skip()
+
+
+###########################################################################
+## Class bLoggerFrame
+###########################################################################
+
+class bLoggerFrame ( BaseFrame ):
+
+    def __init__( self, parent ):
+        BaseFrame.__init__ ( self, parent, id = wx.ID_ANY, title = u"PyRRhic Logger", pos = wx.DefaultPosition, size = wx.Size( 800,600 ), style = wx.DEFAULT_FRAME_STYLE|wx.TAB_TRAVERSAL )
+
+        self.SetSizeHints( wx.DefaultSize, wx.DefaultSize )
+        self.m_mgr = wx.aui.AuiManager()
+        self.m_mgr.SetManagedWindow( self )
+        self.m_mgr.SetFlags(wx.aui.AUI_MGR_ALLOW_ACTIVE_PANE)
+
+        self._menubar = wx.MenuBar( 0 )
+        self.SetMenuBar( self._menubar )
+
+        self._toolbar = wx.aui.AuiToolBar( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.aui.AUI_TB_HORZ_LAYOUT )
+        self._refresh_but = self._toolbar.AddTool( wx.ID_ANY, u"tool", wx.ArtProvider.GetBitmap( wx.ART_FIND, wx.ART_BUTTON ), wx.NullBitmap, wx.ITEM_NORMAL, u"Refresh Device List", u"Refresh Device List", None )
+
+        _iface_choiceChoices = [ u"Interface Selection" ]
+        self._iface_choice = wx.Choice( self._toolbar, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, _iface_choiceChoices, 0 )
+        self._iface_choice.SetSelection( 0 )
+        self._toolbar.AddControl( self._iface_choice )
+        _protocol_choiceChoices = [ u"Protocol Selection" ]
+        self._protocol_choice = wx.Choice( self._toolbar, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, _protocol_choiceChoices, 0 )
+        self._protocol_choice.SetSelection( 0 )
+        self._toolbar.AddControl( self._protocol_choice )
+        self._connect_but = wx.Button( self._toolbar, wx.ID_ANY, u"Connect", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._connect_but.Enable( False )
+
+        self._toolbar.AddControl( self._connect_but )
+        self._toolbar.Realize()
+        self.m_mgr.AddPane( self._toolbar, wx.aui.AuiPaneInfo().Bottom().CaptionVisible( False ).CloseButton( False ).PinButton( True ).Movable( False ).Dock().Resizable().FloatingSize( wx.DefaultSize ).LeftDockable( False ).RightDockable( False ).Layer( 10 ) )
+
+        self._statusbar = self.CreateStatusBar( 3, wx.STB_DEFAULT_STYLE, wx.ID_ANY )
+        self._param_panel = LoggerParamPanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
+        self.m_mgr.AddPane( self._param_panel, wx.aui.AuiPaneInfo() .Left() .Caption( u"Parameters" ).Dock().Resizable().FloatingSize( wx.DefaultSize ).BottomDockable( False ).TopDockable( False ).MinSize( wx.Size( 200,-1 ) ).Layer( 10 ) )
+
+        self._gauge_panel = LoggerGaugePanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
+        self.m_mgr.AddPane( self._gauge_panel, wx.aui.AuiPaneInfo() .Center() .Caption( u"Gauges" ).CloseButton( False ).Dock().Resizable().FloatingSize( wx.DefaultSize ).BottomDockable( False ).TopDockable( False ).Floatable( False ).DefaultPane() )
+
+
+        self.m_mgr.Update()
+        self.Centre( wx.BOTH )
+
+        # Connect Events
+        self.Bind( wx.EVT_IDLE, self.OnIdle )
+        self.Bind( wx.EVT_TOOL, self.OnRefreshInterfaces, id = self._refresh_but.GetId() )
+        self._iface_choice.Bind( wx.EVT_CHOICE, self.OnSelectInterface )
+        self._protocol_choice.Bind( wx.EVT_CHOICE, self.OnSelectProtocol )
+        self._connect_but.Bind( wx.EVT_BUTTON, self.OnConnectButton )
+
+    def __del__( self ):
+        self.m_mgr.UnInit()
+
+
+
+    # Virtual event handlers, overide them in your derived class
+    def OnIdle( self, event ):
+        event.Skip()
+
+    def OnRefreshInterfaces( self, event ):
+        event.Skip()
+
+    def OnSelectInterface( self, event ):
+        event.Skip()
+
+    def OnSelectProtocol( self, event ):
+        event.Skip()
+
+    def OnConnectButton( self, event ):
         event.Skip()
 
 

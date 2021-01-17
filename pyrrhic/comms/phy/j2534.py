@@ -15,60 +15,65 @@
 
 import logging
 
+from time import sleep
+from typing import Protocol
+
 from PyJ2534 import *
 from PyJ2534.error import J2534Error, J2534Errors
 
 from .base import CommunicationDevice
 
-_interfaces = get_interfaces()
-
 class J2534PassThru(CommunicationDevice):
     "Encapsulation of a J2534 Pass-Thru device"
 
-    def __init__(self, interface_name, init_args, init=False):
+    def __init__(self, interface_name, protocol, baud, flags=0, ioctl={}, init=False):
         """Encapsulation initializer
 
         Arguments:
         - `interface_name`: `str` containing the name of the interface
             to open, as stored in the keys of the `dict` returned from
             the call to `PyJ2534.get_interfaces`
-        - `init_args`: `list` of arguments `[protocol, flags, baud]`
-            that are passed to `PassThruConnect`
+        - `protocol`: `ProtocolID` indicating the type of channel to open
+        - `baud`: `int` indicating the channel baud rate
 
         Keywords [Default]:
-        - init [`False`]: Initialize the interface immediately
+        - `flags` [`0`] : `ProtocolFlags` specifying the flags to use
+            when initializng the channel
+        - `ioctl` [`{}`]: `dict` containing {`IoctlParameter`: Value} pairs to
+            configure the channel upon initialization
+        - `init` [`False`]: Initialize the interface immediately
         """
         self._iface_name = interface_name
-        self._iface = load_interface(_interfaces[self._iface_name])
+        self._iface = load_interface(get_interfaces()[self._iface_name])
         self._devID = None
         self._chanID = None
         self._filterID = None
-        self._init_args = init_args
+        self._protocol = protocol
+        self._baud = baud
+        self._flags = flags
+        self._ioctl = ioctl
         self._initialized = False
 
         if init:
             self.initialize()
 
-    def initialize(self, config={}):
+    def initialize(self):
         """Open the device and initialize a communication channel
 
-        Keywords [Default]:
-        - `config`: `dict` containing {`IoctlParameter`: Value} pairs to
-            configure the channel upon initialization
         """
         if not self._initialized:
 
             # open the device
             self._devID = self._iface.PassThruOpen()
-            args = [self._devID] + self._init_args
 
-            # open a ISO9141 channel
+            # open channel
+            args = (self._devID, self._protocol, self._baud, self._flags)
             self._chanID = self._iface.PassThruConnect(*args)
 
             # configure channel, disable loopback by default
-            if IoctlParameter.LOOPBACK not in config:
-                config[IoctlParameter.LOOPBACK] = 0
-            self._iface.PassThruIoctlSetConfig(self._chanID, config)
+            if IoctlParameter.LOOPBACK not in self._ioctl:
+                self._ioctl[IoctlParameter.LOOPBACK] = 0
+            self._iface.PassThruIoctlSetConfig(self._chanID, self._ioctl)
 
             # create a pass-all filter
             filter_msg = PASSTHRU_MSG(ProtocolID.ISO9141, data=b'\x00')
@@ -112,11 +117,21 @@ class J2534PassThru(CommunicationDevice):
 class J2534PassThru_ISO9141(J2534PassThru):
     "J2534 Pass-Thru device configured for a ISO9141 channel"
 
-    def __init__(self, interface_name, flags=0, baud=4800):
-        _init_args = [ProtocolID.ISO9141, flags, baud]
-        super(J2534PassThru_ISO9141, self).__init__(interface_name, _init_args)
+    def __init__(self, interface_name, **kwargs):
+        """Initializer
+
+        See `J2534PassThru` base class for description `args` and `kwargs`.
+        """
+        baud = kwargs.pop('baud', 4800)
+        super(J2534PassThru_ISO9141, self).__init__(
+            interface_name, ProtocolID.ISO9141, baud, **kwargs
+        )
 
     def read(self, num_msgs=2, timeout=None):
+
+        if not self._initialized:
+            raise RuntimeError('Interface is not initialized!')
+
         msgs = []
         try:
             msgs = self._iface.PassThruReadMsgs(
@@ -135,7 +150,32 @@ class J2534PassThru_ISO9141(J2534PassThru):
         return ret
 
     def write(self, msg_bytes, timeout=None):
+
+        if not self._initialized:
+            raise RuntimeError('Interface is not initialized!')
+
         ptMsg = PASSTHRU_MSG(ProtocolID.ISO9141, data=msg_bytes)
         return self._iface.PassThruWriteMsgs(
             self._chanID, [ptMsg], timeout=timeout
         )
+
+    def query(self, msg_bytes, num_msgs=2, timeout=None, delay=500):
+
+        if not self._initialized:
+            raise RuntimeError('Interface is not initialized!')
+
+        # clear buffers
+        self._iface.PassThruIoctlClearTxBuffer(self._chanID)
+        self._iface.PassThruIoctlClearRxBuffer(self._chanID)
+
+        # send request
+        self.write(msg_bytes, timeout=timeout)
+
+        # wait
+        if delay is not None:
+            sleep(delay*1e-3)
+
+        # return response
+        return self.read(num_msgs=num_msgs, timeout=timeout)
+
+phys = {x: set([J2534PassThru, J2534PassThru_ISO9141]) for x in get_interfaces()}

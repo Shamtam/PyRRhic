@@ -17,12 +17,12 @@ import wx
 from logging import getLogger, CRITICAL, ERROR, WARNING, INFO, DEBUG
 
 from ..common.logging import _console_formatter, _lvl_map
-from .panelsBase import bLogPanel
+from .panelsBase import bConsolePanel
 from .wxutils import WxEventLogHandler, EVT_LOG
 
-class LogPanel(bLogPanel):
+class ConsolePanel(bConsolePanel):
     def __init__(self, *args, **kwargs):
-        super(LogPanel, self).__init__(*args, **kwargs)
+        super(ConsolePanel, self).__init__(*args, **kwargs)
         self._handler = WxEventLogHandler(self, _console_formatter)
         getLogger().addHandler(self._handler)
         self._handler.setLevel(INFO)

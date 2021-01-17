@@ -13,16 +13,14 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from time import sleep
-
 class CommunicationDevice(object):
     """ECU physical-layer communication encapsulation/interface"""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, interface_name, **kwargs):
         "Open and configure the physical device"
         self._initialized = False
-        self._delay = 100
-        self._timeout = 5000
+        self._delay = kwargs.pop('delay', 100)
+        self._timeout = kwargs.pop('timeout', 5000)
 
     def initialize(self, *args, **kwargs):
         "Initialize the physical layer connection"
@@ -47,10 +45,7 @@ class CommunicationDevice(object):
         reads `num_msgs` from the channel. `timeout` is passed to `read`
         and `write` and indicates the timeout in ms that is used.
         """
-        self.write(msg_bytes, timeout=timeout)
-        if delay is not None:
-            sleep(delay*1e-3)
-        return self.read(num_msgs=num_msgs, timeout=timeout)
+        raise NotImplementedError
 
     @property
     def Initialized(self):
