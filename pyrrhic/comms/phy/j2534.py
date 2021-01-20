@@ -67,7 +67,7 @@ class J2534PassThru(CommunicationDevice):
             self._devID = self._iface.PassThruOpen()
 
             # open channel
-            args = (self._devID, self._protocol, self._baud, self._flags)
+            args = (self._devID, self._protocol, self._flags, self._baud)
             self._chanID = self._iface.PassThruConnect(*args)
 
             # configure channel, disable loopback by default
