@@ -18,8 +18,8 @@ import logging
 import os
 
 from collections.abc import MutableMapping
-from pyrrhic.common.enums import UserLevel
 
+from .enums import UserLevel
 from .helpers import PyrrhicJSONSerializable
 
 _logger = logging.getLogger(__name__)

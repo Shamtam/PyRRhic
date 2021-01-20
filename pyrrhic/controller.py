@@ -16,8 +16,6 @@
 import json
 import logging
 import os
-from pyrrhic.comms.protocol.base import LogQueryParseError
-from pyrrhic.common.enums import LoggerEndpoint
 
 import struct
 
@@ -30,7 +28,7 @@ from .common.preferences import PreferenceManager
 from .common.rom import Rom
 
 from .comms.phy import get_all_interfaces
-from .comms.protocol import get_all_protocols
+from .comms.protocol import get_all_protocols, LogQueryParseError
 from .comms.worker import CommsWorker
 
 _logger = logging.getLogger(__name__)
