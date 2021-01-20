@@ -825,11 +825,6 @@ class RRLoggerDef(object):
 
         return Scaling(name, self, **props)
 
-    def _param_from_xml(self, param):
-        """
-        Instantiate a `LogParam` object from an `xml.etree.ElementTree.Element`
-        """
-
     def resolve_dependencies(self, defs_dict):
         """
         Resolve all portions of the definition into their proper encapsulations.

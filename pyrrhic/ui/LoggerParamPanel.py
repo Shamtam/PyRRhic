@@ -17,10 +17,12 @@ import wx
 
 from .panelsBase import bLoggerParamPanel
 from ..common.rom import PyrrhicLoggerViewModel
+from ..common.enums import LogParamType
 
 class LoggerParamPanel(bLoggerParamPanel):
     def __init__(self, *args):
         super(LoggerParamPanel, self).__init__(*args)
+        self._controller = self.Parent.Controller
 
     def initialize(self, logger_def):
         self._selected_model = PyrrhicLoggerViewModel(logger_def, selected=True)
@@ -50,3 +52,27 @@ class LoggerParamPanel(bLoggerParamPanel):
     def update_model(self):
         self._selected_model.Cleared()
         self._available_model.Cleared()
+
+    def OnSelectAvailable(self, event):
+        m = self._available_model
+        nodes = [m.ItemToObject(x) for x in self._available_dvc.GetSelections()]
+        self._but_add.Enable(all([isinstance(x[0], LogParamType) for x in nodes]))
+
+    def OnSelectSelected(self, event):
+        m = self._selected_model
+        nodes = [m.ItemToObject(x) for x in self._selected_dvc.GetSelections()]
+        self._but_rem.Enable(all([isinstance(x[0], LogParamType) for x in nodes]))
+
+    def OnAddParam(self, event):
+        m = self._available_model
+        nodes = [m.ItemToObject(x) for x in self._available_dvc.GetSelections()]
+        nodes = list(filter(lambda x: isinstance(x[0], LogParamType), nodes))
+        params = [x[2] for x in nodes]
+        self._controller.add_log_params(params)
+
+    def OnRemoveParam(self, event):
+        m = self._selected_model
+        nodes = [m.ItemToObject(x) for x in self._selected_dvc.GetSelections()]
+        nodes = list(filter(lambda x: isinstance(x[0], LogParamType), nodes))
+        params = [x[2] for x in nodes]
+        self._controller.remove_log_params(params)

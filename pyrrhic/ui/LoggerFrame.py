@@ -19,8 +19,8 @@ from .base import bLoggerFrame
 
 class LoggerFrame(bLoggerFrame):
     def __init__(self, parent, controller):
-        super(LoggerFrame, self).__init__(parent)
         self._controller = controller
+        super(LoggerFrame, self).__init__(parent)
 
         self._connect_text = 'Connect'
         self._disconnect_text = 'Disconnect'
@@ -47,6 +47,9 @@ class LoggerFrame(bLoggerFrame):
     def _disable_toolbar_controls(self, connect=False):
         self._enable_toolbar_controls(enable=False, connect=connect)
 
+    def update_gauges(self):
+        self._gauge_panel.update_gauges()
+
     def on_connection(self, connected=True, log_def=None):
         text = self._disconnect_text if connected else self._connect_text
         self._connect_but.SetLabelText(text)
@@ -57,6 +60,14 @@ class LoggerFrame(bLoggerFrame):
             self._param_panel.initialize(log_def)
         else:
             self._param_panel.clear()
+
+    def add_gauge(self, param):
+        self._gauge_panel.add_gauge(param)
+        self._param_panel.update_model()
+
+    def remove_gauge(self, param):
+        self._gauge_panel.remove_gauge(param)
+        self._param_panel.update_model()
 
     def OnRefreshInterfaces(self, event=None):
         self._iface_choice.Clear()
@@ -114,3 +125,4 @@ class LoggerFrame(bLoggerFrame):
 
     def OnIdle(self, event):
         self._controller.check_logger()
+        event.RequestMore()

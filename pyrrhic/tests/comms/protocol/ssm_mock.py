@@ -15,11 +15,8 @@
 
 import os
 
-from threading import Thread
-
-from ....comms.protocol.base import ECUProtocol
-from ....comms.phy import get_all_interfaces
 from ....common.enums import LoggerEndpoint, LoggerProtocol
+from ....comms.protocol.ssm import SSMProtocol
 from ..phy.phy_mock import MockDevice
 
 _ssm_endpoint_map = {
@@ -27,7 +24,7 @@ _ssm_endpoint_map = {
     LoggerEndpoint.TCU : b'\x18',
 }
 
-class MockSSM(ECUProtocol):
+class MockSSM(SSMProtocol):
 
     _supported_phy = set([MockDevice])
 
@@ -43,8 +40,11 @@ class MockSSM(ECUProtocol):
         super(MockSSM, self).__init__(*args)
         self._protocol = LoggerProtocol.SSM
         self._ecu_id = ecu_id
-        self._thread = None
-        self._phy = MockDevice(delay=continuous_delay)
+        self._delay = continuous_delay
+        self._phy = MockDevice()
+
+    def check_logger_response(self):
+        return self._phy.read()
 
     def identify_endpoint(self, endpoint):
         identifier = self._ecu_id.upper()
@@ -54,41 +54,25 @@ class MockSSM(ECUProtocol):
             '0000000000000000000000000000000000000000000000000000000000'
             '000000000000000000'
         )
-        raw_ident_str = b'\xa2\x10\x11' + bytes.fromhex(self._ecu_id) + capabilities
-        return (
-            self._protocol,
-            endpoint,
-            identifier,
-            raw_ident_str
+        raw_ident_str = (
+            b'\xa2\x10\x11' + bytes.fromhex(self._ecu_id) + capabilities
         )
+        return (identifier, raw_ident_str)
 
     def read_block(self, dest, addr, num_bytes, continuous=False):
         if continuous:
-            self._thread = Thread(
-                endpoint=self._phy.enqueue_response, args=(num_bytes,)
-            )
-            self._thread.start()
-            return 1
+            self._phy.begin_continuous_responses(self._delay, num_bytes)
         else:
             return os.urandom(num_bytes)
 
     def read_addresses(self, dest, addr_list, continuous=False):
-        self._phy.ReadSize = len(addr_list)
         if continuous:
-            self._thread = Thread(
-                endpoint=self._phy.enqueue_response, args=(len(addr_list),)
-            )
-            self._thread.start()
-            return 1
+            self._phy.begin_continuous_responses(self._delay, len(addr_list))
         else:
             return os.urandom(len(addr_list))
 
     def write_block(self, dest, addr, data):
-        if self._thread:
-            self._thread.join()
-        return 1
+        self._phy.interrupt_continuous_responses()
 
     def write_address(self, dest, addr, data):
-        if self._thread:
-            self._thread.join()
-        return 1
+        self._phy.interrupt_continuous_responses()

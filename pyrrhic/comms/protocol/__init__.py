@@ -14,15 +14,15 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from ... import _debug
-from enum import IntEnum, auto
 from .ssm import protocols as ssm_protocols
 
 def get_all_protocols():
     """Get all configured protocols.
 
-    Returns a `dict` with {`str`: `ECUProtocol`} key-val pairs, where
-    the keys are the display name of the protocol, and the values are
-    the appropriate subclass of `ECUProtocol`.
+    Returns a `dict` with {`str`: (`EndpointProtocol`, `LogQuery`)}
+    key-val pairs, where the keys are the display name of the protocol,
+    and the values are a 2-tuple containing the appropriate subclasses
+    of `EndpointProtocol` and `LogQuery`.
     """
     protocols = {}
 

@@ -248,7 +248,7 @@ class bLoggerParamPanel ( wx.Panel ):
 
         _sizer.Add( self._label_sel_pars, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 5 ), wx.ALIGN_BOTTOM|wx.ALIGN_CENTER_HORIZONTAL, 5 )
 
-        self._selected_dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
+        self._selected_dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_MULTIPLE|wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
         self._selected_dvc.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
 
         _sizer.Add( self._selected_dvc, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 5 ), wx.EXPAND, 5 )
@@ -267,7 +267,7 @@ class bLoggerParamPanel ( wx.Panel ):
 
         _sizer.Add( self._but_rem, wx.GBPosition( 2, 3 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
 
-        self._available_dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
+        self._available_dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_MULTIPLE|wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
         self._available_dvc.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
 
         _sizer.Add( self._available_dvc, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 5 ), wx.EXPAND, 5 )
@@ -291,7 +291,11 @@ class bLoggerParamPanel ( wx.Panel ):
         # Connect Events
         self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClosePane )
         self._selected_dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_ACTIVATED, self.OnToggle, id = wx.ID_ANY )
+        self._selected_dvc.Bind( wx.dataview.EVT_DATAVIEW_SELECTION_CHANGED, self.OnSelectSelected, id = wx.ID_ANY )
+        self._but_add.Bind( wx.EVT_BUTTON, self.OnAddParam )
+        self._but_rem.Bind( wx.EVT_BUTTON, self.OnRemoveParam )
         self._available_dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_ACTIVATED, self.OnToggle, id = wx.ID_ANY )
+        self._available_dvc.Bind( wx.dataview.EVT_DATAVIEW_SELECTION_CHANGED, self.OnSelectAvailable, id = wx.ID_ANY )
 
     def __del__( self ):
         pass
@@ -304,6 +308,89 @@ class bLoggerParamPanel ( wx.Panel ):
     def OnToggle( self, event ):
         event.Skip()
 
+    def OnSelectSelected( self, event ):
+        event.Skip()
+
+    def OnAddParam( self, event ):
+        event.Skip()
+
+    def OnRemoveParam( self, event ):
+        event.Skip()
+
+
+    def OnSelectAvailable( self, event ):
+        event.Skip()
+
+
+###########################################################################
+## Class bGaugePanel
+###########################################################################
+
+class bGaugePanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        self.SetBackgroundColour( wx.Colour( 0, 0, 0 ) )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._param_label = wx.StaticText( self, wx.ID_ANY, u"Parameter", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._param_label.Wrap( -1 )
+
+        self._param_label.SetFont( wx.Font( 12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, False, wx.EmptyString ) )
+        self._param_label.SetForegroundColour( wx.Colour( 255, 255, 255 ) )
+
+        _sizer.Add( self._param_label, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 2 ), wx.EXPAND|wx.LEFT|wx.TOP, 5 )
+
+        self._value_text = wx.StaticText( self, wx.ID_ANY, u"50.0", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_RIGHT )
+        self._value_text.Wrap( -1 )
+
+        self._value_text.SetFont( wx.Font( 50, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+        self._value_text.SetForegroundColour( wx.Colour( 0, 255, 0 ) )
+
+        _sizer.Add( self._value_text, wx.GBPosition( 1, 0 ), wx.GBSpan( 5, 2 ), wx.ALIGN_CENTER_VERTICAL|wx.ALL, 5 )
+
+        self._max_label = wx.StaticText( self, wx.ID_ANY, u"Max:", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._max_label.Wrap( -1 )
+
+        self._max_label.SetForegroundColour( wx.Colour( 255, 255, 255 ) )
+
+        _sizer.Add( self._max_label, wx.GBPosition( 0, 3 ), wx.GBSpan( 1, 1 ), 0, 5 )
+
+        self._max_value = wx.StaticText( self, wx.ID_ANY, u"100.0", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_RIGHT )
+        self._max_value.Wrap( -1 )
+
+        self._max_value.SetForegroundColour( wx.Colour( 255, 255, 255 ) )
+
+        _sizer.Add( self._max_value, wx.GBPosition( 1, 3 ), wx.GBSpan( 1, 1 ), wx.EXPAND|wx.RIGHT, 5 )
+
+        self._min_label = wx.StaticText( self, wx.ID_ANY, u"Min:", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._min_label.Wrap( -1 )
+
+        self._min_label.SetForegroundColour( wx.Colour( 255, 255, 255 ) )
+
+        _sizer.Add( self._min_label, wx.GBPosition( 4, 3 ), wx.GBSpan( 1, 1 ), 0, 5 )
+
+        self._min_value = wx.StaticText( self, wx.ID_ANY, u"0.0", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_RIGHT )
+        self._min_value.Wrap( -1 )
+
+        self._min_value.SetForegroundColour( wx.Colour( 255, 255, 255 ) )
+
+        _sizer.Add( self._min_value, wx.GBPosition( 5, 3 ), wx.GBSpan( 1, 1 ), wx.BOTTOM|wx.EXPAND|wx.RIGHT, 5 )
+
+
+        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableRow( 3 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+    def __del__( self ):
+        pass
 
 
 ###########################################################################
@@ -315,9 +402,7 @@ class bLoggerGaugePanel ( wx.Panel ):
     def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
         wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
 
-        _sizer = wx.GridBagSizer( 0, 0 )
-        _sizer.SetFlexibleDirection( wx.BOTH )
-        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+        _sizer = wx.GridSizer( 0, 2, 0, 0 )
 
 
         self.SetSizer( _sizer )
@@ -326,6 +411,7 @@ class bLoggerGaugePanel ( wx.Panel ):
 
         # Connect Events
         self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClosePane )
+        self.Bind( wx.EVT_SIZE, self.OnResize )
 
     def __del__( self ):
         pass
@@ -333,6 +419,9 @@ class bLoggerGaugePanel ( wx.Panel ):
 
     # Virtual event handlers, overide them in your derived class
     def OnClosePane( self, event ):
+        event.Skip()
+
+    def OnResize( self, event ):
         event.Skip()
 
 

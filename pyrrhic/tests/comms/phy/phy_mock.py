@@ -15,15 +15,30 @@
 
 import os
 
+from ....common.helpers import PyrrhicWorker
+from ....comms.phy.base import CommunicationDevice
 from queue import Queue, Empty
 from time import sleep
 
-class MockDevice(object):
+class MockResponseWorker(PyrrhicWorker):
+    def __init__(self, device, delay, length):
+        super(MockResponseWorker, self).__init__()
+        self._device = device
+        self._delay = delay
+        self._length = length
+
+    def run(self):
+        while not self._stoprequest.is_set():
+            self._device.ReadQueue.put_nowait(os.urandom(self._length))
+            sleep(self._delay*1e-3)
+
+class MockDevice(CommunicationDevice):
     """ECU physical-layer communication encapsulation/interface"""
 
     def __init__(self, delay=100):
         self._delay = delay
         self._read_q = Queue()
+        self._worker = None
 
     def initialize(self, *args, **kwargs):
         pass
@@ -48,9 +63,34 @@ class MockDevice(object):
     def query(self, num_msgs=1):
         return self.read(num_msgs=num_msgs)
 
-    def enqueue_response(self, length):
-        self._read_q.put_nowait(os.urandom(length))
+    def clear_rx_buffer(self):
+        with self._read_q.mutex:
+            self._read_q.queue.clear()
+
+    def clear_tx_buffer(self):
+        pass
+
+    def begin_continuous_responses(self, delay, length):
+        """Spawn a thread to continuously generate mock responses
+
+        Arguments:
+        `delay`: delay in ms between generated responses
+        `length`: length of each generated response
+        """
+        self.interrupt_continuous_responses()
+        self._worker = MockResponseWorker(self, delay, length)
+        self._worker.start()
+
+    def interrupt_continuous_responses(self):
+        if self._worker is not None:
+            self._worker.join()
+            self.clear_rx_buffer()
+            self._worker = None
 
     @property
     def Initialized(self):
         return True
+
+    @property
+    def ReadQueue(self):
+        return self._read_q

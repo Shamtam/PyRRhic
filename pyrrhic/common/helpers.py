@@ -67,10 +67,21 @@ class PyrrhicWorker(Thread):
 
     def __init__(self, *args, **kwargs):
         """Initializer"""
+
+        # check for target/args keywords, and add self to positional
+        # arguments if both keys were specified
+        if all([x in kwargs for x in ['target', 'args']]):
+            kwargs['args'] = (self, *kwargs['args'])
+            self.run = kwargs['target']
+
         super(PyrrhicWorker, self).__init__(*args, **kwargs)
         self._in_q = Queue()
         self._out_q = Queue()
         self._stoprequest = Event()
+
+        # override run method during initialization
+        if 'target' in kwargs:
+            self.run = kwargs['target']
 
     def run(self):
         """To be implemented in subclasses.
@@ -88,7 +99,6 @@ class PyrrhicWorker(Thread):
                     except:
                         # error occurred, exit thread loop with break
                         break
-
 
                 # do stuff after thread task is completed
         ```

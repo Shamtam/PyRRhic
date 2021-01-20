@@ -13,7 +13,10 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-class ECUProtocol(object):
+class LogQueryParseError(Exception):
+    pass
+
+class EndpointProtocol(object):
 
     # tuple of phy classes supported by this protocol
     _supported_phy = ()
@@ -24,7 +27,7 @@ class ECUProtocol(object):
     def __init__(self, interface_name, phy_cls, **kwargs):
         """Base initializer for ECU protocol encapsulations
 
-        Keywords are specific to the particular `ECUProtocol` subclass
+        Keywords are specific to the particular `EndpointProtocol` subclass
 
         Arguments:
         - `interface_name`: `str` containing the `CommunicationDevice`
@@ -35,20 +38,72 @@ class ECUProtocol(object):
         self._phy = None
         self._protocol = None
 
-    def identify_target(self, target):
-        """Returns endpoint identification information
+    def check_logger_response(self):
+        """Checks receive buffer for a response to a logging query.
 
-        Arguments:
-        - `target`: `LoggerTarget` specifying the target to init/identify
+        Returns a `bytes` containing the raw query data from the
+        endpoint if there is a pending response in the receive buffer,
+        otherwise returns `None`.
         """
         raise NotImplementedError
+
+    def identify_endpoint(self, endpoint):
+        """Attempt to identify the endpoint.
+
+        If successful, returns a 2-tuple `(identifier, raw_data)` where
+        - `identifier` is a `str` that maps to the unique ID that is
+            used as the key for this endpoint in the logger definitions.
+        - `raw_data` is the raw `bytes` response from the endpoint
+
+        If unsuccessful, returns `None`
+
+        Arguments:
+        - `endpoint`: `LoggerEndpoint` specifying the endpoint to identify
+        """
+        raise NotImplementedError
+
+    @property
+    def Interface(self):
+        "Returns the underlying `CommunicationDevice` subclass"
+        return self._phy
 
     @property
     def Protocol(self):
         "Returns the `LoggerProtocol` implemented by this instance"
         return self._protocol
 
+class LogQuery(object):
+    """Base class for translation layers that handle the implementation
+        details of translating between a particular `EndpointProtocol` and """
+
+    _max_request = None
+
+    def __init__(self, params):
+        self._params = params
+
+    def generate_request(self, params):
+        """Return a `3-tuple` used to request a query from the endpoint.
+
+        The returned `tuple` looks like `(func, args, kwargs)`, where
+        `func` is the name of the `EndpointProtocol` callable that is called
+        to send the request to the endpoint, and `args` and `kwargs`
+        are arguments and keywords to pass to the callable.
+        """
+        raise NotImplementedError
+
+    def extract_values(self, resp):
+        """Update the param values from the given byte string.
+
+        Arguments:
+        - `resp`: `bytes` containing the raw data from the endpoint
+        """
+        raise NotImplementedError
+
     @property
-    def Interface(self):
-        "Returns the underlying `CommunicationDevice` subclass"
-        return self._phy
+    def MaxRequestSize(self):
+        """Max number of bytes allowed in a request"""
+        return self._max_request
+
+    @property
+    def Parameters(self):
+        return self._params

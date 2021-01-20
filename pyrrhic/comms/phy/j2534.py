@@ -16,7 +16,6 @@
 import logging
 
 from time import sleep
-from typing import Protocol
 
 from PyJ2534 import *
 from PyJ2534.error import J2534Error, J2534Errors
@@ -84,9 +83,7 @@ class J2534PassThru(CommunicationDevice):
                 pattern_msg=filter_msg
             )
 
-            # clear buffers
-            self._iface.PassThruIoctlClearRxBuffer(self._chanID)
-            self._iface.PassThruIoctlClearTxBuffer(self._chanID)
+            self.clear_buffers()
 
             self._initialized = True
 
@@ -100,6 +97,12 @@ class J2534PassThru(CommunicationDevice):
             self._iface.PassThruClose(self._devID)
             self._devID = None
             self._initialized = False
+
+    def clear_rx_buffer(self):
+        self._iface.PassThruIoctlClearRxBuffer(self._chanID)
+
+    def clear_tx_buffer(self):
+        self._iface.PassThruIoctlClearTxBuffer(self._chanID)
 
     @property
     def PassThruInterface(self):
@@ -178,4 +181,6 @@ class J2534PassThru_ISO9141(J2534PassThru):
         # return response
         return self.read(num_msgs=num_msgs, timeout=timeout)
 
-phys = {x: set([J2534PassThru, J2534PassThru_ISO9141]) for x in get_interfaces()}
+phys = {
+    x: set([J2534PassThru, J2534PassThru_ISO9141]) for x in get_interfaces()
+}

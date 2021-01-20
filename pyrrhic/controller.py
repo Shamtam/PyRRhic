@@ -16,6 +16,8 @@
 import json
 import logging
 import os
+from pyrrhic.comms.protocol.base import LogQueryParseError
+from pyrrhic.common.enums import LoggerEndpoint
 
 import struct
 
@@ -23,7 +25,7 @@ from queue import Empty
 
 from .common import _prefs_file
 from .common.definitions import DefinitionManager, ROMDefinition
-from .common.helpers import PyrrhicJSONEncoder
+from .common.helpers import PyrrhicJSONEncoder, PyrrhicMessage
 from .common.preferences import PreferenceManager
 from .common.rom import Rom
 
@@ -44,6 +46,7 @@ class PyrrhicController(object):
         self._editor_frame = editor_frame
         self._logger_frame = logger_frame
         self._comms_worker = None
+        self._query = None
         self._prefs = PreferenceManager(_prefs_file)
 
         # create default preference file if it doesn't already exist
@@ -63,7 +66,7 @@ class PyrrhicController(object):
         "Resolve state after any preference changes"
 
         ecuflash_repo_dir = self._prefs['ECUFlashRepo'].Value
-        rrlogger_file = self._prefs['RRLoggerFile'].Value
+        rrlogger_file = self._prefs['RRLoggerDef'].Value
 
         if ecuflash_repo_dir:
             self._defmgr.load_ecuflash_repository(ecuflash_repo_dir)
@@ -140,7 +143,7 @@ class PyrrhicController(object):
 
         protocols = get_all_protocols()
         for protocol_name in protocols:
-            protocol = protocols[protocol_name]
+            protocol, query = protocols[protocol_name]
             if protocol._supported_phy <= iface_phys:
                 ret.append(protocol_name)
 
@@ -148,10 +151,13 @@ class PyrrhicController(object):
 
     def spawn_logger(self, interface_name, protocol_name):
         iface_phys = self._available_interfaces[interface_name]
-        protocol = get_all_protocols()[protocol_name]
+        protocol, query = get_all_protocols()[protocol_name]
 
         # get specific `CommunicationDevice` subclass for this protocol
         phy = list(protocol._supported_phy.intersection(iface_phys))[0]
+
+        # store the query class
+        self._query_cls = query
 
         # create the worker and spawn the new thread
         self._comms_worker= CommsWorker(interface_name, phy, protocol)
@@ -168,6 +174,15 @@ class PyrrhicController(object):
             self._comms_worker = None
             self._logger_frame.on_connection(connected=False)
 
+            # remove all parameters from UI
+            params = self._query.Parameters
+            for p in params:
+                self.LoggerFrame.remove_gauge(p)
+                p.disable()
+
+            self._query_cls = None
+            self._query = None
+
     def check_logger(self):
         "Idle event handler that checks logging thread for updates."
         if self._comms_worker is not None:
@@ -181,24 +196,58 @@ class PyrrhicController(object):
                 time = item.RawTimestamp
                 data = item.Data
                 if msg == 'Init':
-                    self._logger_init((time, *data))
-                elif msg == 'ECUMessage':
-                    tps = struct.unpack('>f', data)[0]/0.84
-                    _logger.info('[{}] {:.4f}'.format(time, tps))
+                    self._logger_init(data)
+                elif msg == 'QueryResponse':
+
+                    try:
+                        self._query.extract_values(data)
+                    except LogQueryParseError as e:
+                        _logger.exception(e.message)
+
+                    self._logger_frame.update_gauges()
                 elif msg == 'Exception':
                     raise data
+
+    def add_log_params(self, params):
+        if self._comms_worker is not None:
+            new_params = self._query.Parameters + params if self._query else params
+            self._query = self._query_cls(new_params)
+            req = self._query.generate_request() # TODO: runtime endpoint selection
+            self._comms_worker.InQueue.put(
+                PyrrhicMessage('UpdateQuery', req)
+            )
+        for param in params:
+            self.LoggerFrame.add_gauge(param)
+            param.enable()
+
+    def remove_log_params(self, params):
+        if not self._query:
+            return
+
+        if self._comms_worker is not None:
+            new_params = [x for x in self._query.Parameters if x not in params]
+            self._query = self._query_cls(new_params)
+            if new_params:
+                req = self._query.generate_request()
+            else:
+                req = None
+            self._comms_worker.InQueue.put(
+                PyrrhicMessage('UpdateQuery', req)
+            )
+        for param in params:
+            self.LoggerFrame.remove_gauge(param)
+            param.disable()
 
     def _logger_init(self, init_data):
         """
         Arguments:
-        - `init_data`: `5-tuple` containing logging initialization data:
-            `(timestamp, LoggerProtocol, LoggerEndpoint,
-            identifier, capabilities)`
+        - `init_data`: 4-tuple containing logging initialization data:
+            `(LoggerProtocol, LoggerEndpoint, identifier, raw_data)`
         """
-        timestamp, protocol, endpoint, identifier, capabilities = init_data
+        protocol, endpoint, identifier, capabilities = init_data
         _logger.debug('Received {} {} init'.format(protocol.name, endpoint.name))
         _logger.debug('Identifier: {}'.format(identifier))
-        _logger.debug('Capabilities: {}'.format(capabilities.hex()))
+        _logger.debug('Raw Bytes: {}'.format(capabilities.hex()))
 
         d = self._defmgr.RRLoggerDefs[protocol].get(identifier, None)
         if d is not None:
@@ -208,6 +257,12 @@ class PyrrhicController(object):
                 'Connected to {}: {}'.format(endpoint.name, identifier)
             )
             self._logger_frame.on_connection(log_def=d)
+        else:
+            _logger.info(
+                'Unable to find logger definition for endpoint {}'.format(
+                    identifier
+                )
+            )
 
 # Properties
     @property

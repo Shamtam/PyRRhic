@@ -400,6 +400,7 @@ class LogParam(object):
         self._target = kwargs.pop('Target', None)
         self._enabled = False
         self._supported = False
+        self._value = None
 
     def __repr__(self):
         return '<{} {}: {}>'.format(
@@ -411,6 +412,7 @@ class LogParam(object):
 
     def disable(self):
         self._enabled = False
+        self._value = None
 
     def set_supported(self):
         self._supported = True
@@ -488,3 +490,17 @@ class LogParam(object):
         if self._addrs and self._supported:
             return bool(len(self._addrs))
         return False
+
+    @property
+    def Value(self):
+        return self._value
+
+    @Value.setter
+    def Value(self, val):
+        # TODO: force type checking here
+        self._value = val
+
+    @property
+    def DisplayValue(self):
+        # TODO: update this to properly format values
+        return '{}'.format(self._value) if self._value is not None else None

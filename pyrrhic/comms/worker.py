@@ -22,12 +22,12 @@ from ..common.enums import LoggerEndpoint
 from ..common.helpers import PyrrhicMessage, PyrrhicWorker
 
 class CommsState(IntFlag):
-    NOT_INITALIZED  = auto() # Comms device open, endpoint not initialized
+    UNDEFINED       = 0      # state unknown/uninitialized
     INITIALIZED     = auto() # endpoint init succeeded, ready for query
-    NO_QUERY        = auto() # no query configured
-    VALID_QUERY     = auto() # valid query configured
-    NO_OUT_FILE     = auto() # no output file specified
-    VALID_OUT_FILE  = auto() # valid output file specified
+    HAS_QUERY       = auto() # valid query configured
+    CONT_QUERY      = auto() # expecting data from endpoint
+    WAIT_FOR_RESP   = auto() # non-continuous and waiting for response
+    HAS_OUT_FILE    = auto() # valid output file specified
     WRITING_TO_FILE = auto() # writing data to output file
 
 class CommsWorker(PyrrhicWorker):
@@ -35,10 +35,10 @@ class CommsWorker(PyrrhicWorker):
         super(CommsWorker, self).__init__()
         self._protocol = protocol(interface_name, phy)
         self._interface = self._protocol.Interface
-        self._state = CommsState.NOT_INITALIZED
+        self._state = CommsState.UNDEFINED
         self._last_init_time = datetime.now() - timedelta(seconds=5)
         self._current_endpoint = kwargs.pop('endpoint', LoggerEndpoint.ECU)
-        self._current_query = {}
+        self._current_query = None
         self._current_filepath = None
 
     def run(self):
@@ -62,73 +62,103 @@ class CommsWorker(PyrrhicWorker):
                     if msg == 'SetEndpoint':
                         self._init_endpoint(data)
 
-                # do stuff
+                    elif msg == 'UpdateQuery':
+                        self._set_query(data)
 
                 # try initializing if necessary and retry time has lapsed
-                if(
-                    self._state == CommsState.NOT_INITALIZED and
-                    (_cur_time - self._last_init_time) > timedelta(seconds=5)
-                ):
-                    self._init_endpoint()
+                if not (self._state & CommsState.INITIALIZED):
+                    if (_cur_time - self._last_init_time) > timedelta(seconds=5):
+                        self._init_endpoint()
                     continue
 
-                # A2UI001L - log throttle position 4-byte
-                # self._protocol.read_block(LoggerTarget.ECU, 0xff69b0, 4, continuous=True)
+                # query has been specified
+                if self._state & CommsState.HAS_QUERY:
 
-                # check if endpoint has provided any data
-                resp = self._interface.read()
-                if resp:
-                    self._out_q.put(
-                        PyrrhicMessage(
-                            'ECUMessage',
-                            data=self._protocol.strip_response(resp)
-                        )
-                    )
+                    # initiate query and restart loop if necessary
+                    if not self._state & CommsState.WAIT_FOR_RESP:
+                        self._initiate_query()
+                    else:
+                        self._check_query_response()
+
             except Exception as e:
                 self._out_q.put(PyrrhicMessage('Exception', data=e))
                 continue
 
             finally:
-                # sleep to avoid excessive CPU usage
+                # sleep worker thread to avoid excessive CPU usage
                 sleep(0.01)
 
         # clean-up upon worker thread exit
-        return
+        if self._state & (CommsState.CONT_QUERY | CommsState.WAIT_FOR_RESP):
+            # interrupt continuous query
+            pass
 
     def _init_endpoint(self):
         "Initialize and identify the endpoint, update state accordingly"
-        resp = self._protocol.identify_endpoint(self._current_endpoint)
+
         self._last_init_time = datetime.now()
-        if resp:
-            self._out_q.put(
-                PyrrhicMessage('Init', resp)
-            )
-            self._state = CommsState.INITIALIZED
-        else:
-            self._state = CommsState.NOT_INITALIZED
+
+        try:
+            resp = self._protocol.identify_endpoint(self._current_endpoint)
+        except Exception as e:
+            self._state &= ~CommsState.INITIALIZED
+            return
+
+        init_data = (self._protocol.Protocol, self._current_endpoint, *resp)
+        self._out_q.put(PyrrhicMessage('Init', init_data))
+        self._state |= CommsState.INITIALIZED
 
     def _set_endpoint(self, endpoint):
        self._current_endpoint = (
            endpoint if isinstance(endpoint, LoggerEndpoint) else None
        )
 
-    def _set_query(self, param_list):
+    def _set_query(self, request):
         """Set the current logging query.
 
         Arguments:
-        - `param_list`: `list` of `LogParam`s specifying all parameters
-            the worker should requesting from the target
+        - `request`: `4-tuple` (`func`, `args`, `kwargs`, `continuous`)
         """
+        if not (self._state & CommsState.INITIALIZED):
+            return
 
-        # store param list local to this thread
+        if request:
+            func, args, kwargs, cont = request
+            if hasattr(self._protocol, func):
+                self._current_query = request
+                self._state |= CommsState.HAS_QUERY
 
-        # determine most efficient parameter packing for request
+                flags = CommsState.CONT_QUERY
+                if cont:
+                    self._state |= flags
+                else:
+                    self._state &= ~flags
 
-        # determine expected response signature from protocol
 
-        # update current worker state
+        else:
+            self._current_query = None
+            self._state &= ~CommsState.HAS_QUERY
+            self._state &= ~CommsState.CONT_QUERY
 
-        pass
+        self._state &= ~CommsState.WAIT_FOR_RESP
+
+    def _initiate_query(self):
+        func, args, kwargs, cont = self._current_query
+        args = (self._current_endpoint, args) # add endpoint to args
+        getattr(self._protocol, func)(*args, **kwargs)
+        self._state |= CommsState.WAIT_FOR_RESP
+        self._interface.clear_buffers()
+
+    def _check_query_response(self):
+        resp = self._protocol.check_logger_response()
+
+        # got a response, push it to main thread to update
+        if resp:
+            self._out_q.put(PyrrhicMessage('QueryResponse', data=resp))
+
+            # if non-continuous, reset the waiting flag
+            if not (self._state & CommsState.CONT_QUERY):
+                self._state &= ~CommsState.WAIT_FOR_RESP
 
     def _set_output_file(self, file_path):
         """Set the current output file to stream logging data to

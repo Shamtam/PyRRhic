@@ -17,7 +17,12 @@ class CommunicationDevice(object):
     """ECU physical-layer communication encapsulation/interface"""
 
     def __init__(self, interface_name, **kwargs):
-        "Open and configure the physical device"
+        """Open and configure the physical device layer
+
+        Arguments:
+        - `interface_name`: `str` containing the interface name, as it
+            appears in the global interface dictionary key
+        """
         self._initialized = False
         self._delay = kwargs.pop('delay', 100)
         self._timeout = kwargs.pop('timeout', 5000)
@@ -46,6 +51,19 @@ class CommunicationDevice(object):
         and `write` and indicates the timeout in ms that is used.
         """
         raise NotImplementedError
+
+    def clear_rx_buffer(self):
+        "Clear the receive buffer"
+        raise NotImplementedError
+
+    def clear_tx_buffer(self):
+        "Clear the transmit buffer"
+        raise NotImplementedError
+
+    def clear_buffers(self):
+        "Convenience method to clear both Tx and Rx buffers"
+        self.clear_rx_buffer()
+        self.clear_tx_buffer()
 
     @property
     def Initialized(self):

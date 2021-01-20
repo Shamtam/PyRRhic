@@ -20,7 +20,6 @@ from .wxutils import modal_dialog_ok
 class BaseFrame(wx.Frame):
     def __init__(self, *args, **kwargs):
         super(BaseFrame, self).__init__(*args, **kwargs)
-        self._controller = None # initialized in subclasses
 
     def info_box(self, title, message):
         modal_dialog_ok(self, title, message, wx.ICON_INFORMATION)
