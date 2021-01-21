@@ -345,13 +345,13 @@ class bGaugePanel ( wx.Panel ):
 
         _sizer.Add( self._param_label, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 2 ), wx.EXPAND|wx.LEFT|wx.TOP, 5 )
 
-        self._value_text = wx.StaticText( self, wx.ID_ANY, u"50.0", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_RIGHT )
+        self._value_text = wx.StaticText( self, wx.ID_ANY, u"50.0", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_RIGHT|wx.ST_NO_AUTORESIZE )
         self._value_text.Wrap( -1 )
 
         self._value_text.SetFont( wx.Font( 50, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
         self._value_text.SetForegroundColour( wx.Colour( 0, 255, 0 ) )
 
-        _sizer.Add( self._value_text, wx.GBPosition( 1, 0 ), wx.GBSpan( 5, 2 ), wx.ALIGN_CENTER_VERTICAL|wx.ALL, 5 )
+        _sizer.Add( self._value_text, wx.GBPosition( 2, 0 ), wx.GBSpan( 4, 2 ), wx.ALL|wx.EXPAND, 5 )
 
         self._max_label = wx.StaticText( self, wx.ID_ANY, u"Max:", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
         self._max_label.Wrap( -1 )
@@ -360,7 +360,7 @@ class bGaugePanel ( wx.Panel ):
 
         _sizer.Add( self._max_label, wx.GBPosition( 0, 3 ), wx.GBSpan( 1, 1 ), 0, 5 )
 
-        self._max_value = wx.StaticText( self, wx.ID_ANY, u"100.0", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_RIGHT )
+        self._max_value = wx.StaticText( self, wx.ID_ANY, u"100.0", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_RIGHT|wx.ST_NO_AUTORESIZE )
         self._max_value.Wrap( -1 )
 
         self._max_value.SetForegroundColour( wx.Colour( 255, 255, 255 ) )
@@ -374,7 +374,7 @@ class bGaugePanel ( wx.Panel ):
 
         _sizer.Add( self._min_label, wx.GBPosition( 4, 3 ), wx.GBSpan( 1, 1 ), 0, 5 )
 
-        self._min_value = wx.StaticText( self, wx.ID_ANY, u"0.0", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_RIGHT )
+        self._min_value = wx.StaticText( self, wx.ID_ANY, u"0.0", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_RIGHT|wx.ST_NO_AUTORESIZE )
         self._min_value.Wrap( -1 )
 
         self._min_value.SetForegroundColour( wx.Colour( 255, 255, 255 ) )

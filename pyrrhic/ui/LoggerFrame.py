@@ -13,6 +13,8 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import wx
+
 from wx.aui import AUI_BUTTON_STATE_NORMAL, AUI_BUTTON_STATE_DISABLED
 
 from .base import bLoggerFrame
@@ -28,6 +30,22 @@ class LoggerFrame(bLoggerFrame):
 
         self._iface_text = 'Interface Selection'
         self._protocol_text = 'Protocol Selection'
+
+        self._temp_status_delay = 3000 # ms
+        self._left_status_timer = wx.Timer(self)
+        self._center_status_timer = wx.Timer(self)
+        self._right_status_timer = wx.Timer(self)
+
+        self.Bind(
+            wx.EVT_TIMER, self._pop_left_status, self._left_status_timer
+        )
+        self.Bind(
+            wx.EVT_TIMER, self._pop_center_status, self._center_status_timer
+        )
+        self.Bind(
+            wx.EVT_TIMER, self._pop_right_status, self._right_status_timer
+        )
+
         self.OnRefreshInterfaces()
 
     def _enable_toolbar_controls(self, enable=True, connect=False):
@@ -47,6 +65,15 @@ class LoggerFrame(bLoggerFrame):
     def _disable_toolbar_controls(self, connect=False):
         self._enable_toolbar_controls(enable=False, connect=connect)
 
+    def _pop_left_status(self, event=None):
+        self._statusbar.PopStatusText(field=0)
+
+    def _pop_center_status(self, event=None):
+        self._statusbar.PopStatusText(field=1)
+
+    def _pop_right_status(self, event=None):
+        self._statusbar.PopStatusText(field=2)
+
     def update_gauges(self):
         self._gauge_panel.update_gauges()
 
@@ -58,8 +85,11 @@ class LoggerFrame(bLoggerFrame):
 
         if connected:
             self._param_panel.initialize(log_def)
+            self.push_status(left='ID: {}'.format(log_def.Identifier))
+            self.push_status(left='Connected', temporary=True)
         else:
             self._param_panel.clear()
+            self._pop_left_status()
 
     def add_gauge(self, param):
         self._gauge_panel.add_gauge(param)
@@ -68,6 +98,37 @@ class LoggerFrame(bLoggerFrame):
     def remove_gauge(self, param):
         self._gauge_panel.remove_gauge(param)
         self._param_panel.update_model()
+
+    def push_status(self, left=None, center=None, right=None, temporary=False):
+        """Push text to the corresponding portion of the status bar.
+
+        Pass a `str` to the `left`, `center` and `right` keywords to set
+        the text of the corresponding part of the statusbar. Use the
+        `temporary` keyword to indicate that the text pushed to the
+        status bar should be popped after a small delay (which is held
+        in the local binding `LoggerFrame._temp_status_delay`).
+        """
+
+        if isinstance(left, str):
+            if temporary:
+                self._statusbar.PushStatusText(left, field=0)
+                self._left_status_timer.StartOnce(self._temp_status_delay)
+            else:
+                self._statusbar.SetStatusText(left, i=0)
+
+        if isinstance(center, str):
+            self._statusbar.PushStatusText(center, field=1)
+            if temporary:
+                self._center_status_timer.StartOnce(self._temp_status_delay)
+
+        if isinstance(right, str):
+            self._statusbar.PushStatusText(right, field=2)
+            if temporary:
+                self._right_status_timer.StartOnce(self._temp_status_delay)
+
+    def update_freq(self, avg_freq):
+        freq_str = 'Query Freq: {: >6.2f} Hz'.format(avg_freq)
+        self._statusbar.SetStatusText(freq_str, i=2)
 
     def OnRefreshInterfaces(self, event=None):
         self._iface_choice.Clear()
@@ -125,4 +186,4 @@ class LoggerFrame(bLoggerFrame):
 
     def OnIdle(self, event):
         self._controller.check_logger()
-        event.RequestMore()
+        event.RequestMore() # ensure UI updates continuously

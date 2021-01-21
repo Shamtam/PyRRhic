@@ -28,7 +28,7 @@ class MockSSM(SSMProtocol):
 
     _supported_phy = set([MockDevice])
 
-    def __init__(self, *args, ecu_id='4b12785207', continuous_delay=100):
+    def __init__(self, *args, ecu_id='4b12785207', continuous_delay=50):
         """Initialize a mock SSM protocol.
 
         Keywords [Default]:

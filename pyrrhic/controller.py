@@ -19,6 +19,7 @@ import os
 
 import struct
 
+from collections import deque
 from queue import Empty
 
 from .common import _prefs_file
@@ -40,16 +41,22 @@ class PyrrhicController(object):
     "Top-level application controller"
 
     def __init__(self, editor_frame=None, logger_frame=None):
-        self._available_interfaces = {}
-        self._editor_frame = editor_frame
-        self._logger_frame = logger_frame
-        self._comms_worker = None
-        self._query = None
-        self._prefs = PreferenceManager(_prefs_file)
 
+        self._prefs = PreferenceManager(_prefs_file)
         # create default preference file if it doesn't already exist
         if not os.path.isfile(_prefs_file):
             self.save_prefs()
+
+        # editor-related
+        self._editor_frame = editor_frame
+        self._roms = {}
+
+        # logger-related
+        self._available_interfaces = {}
+        self._logger_frame = logger_frame
+        self._comms_worker = None
+        self._query = None
+        self._query_timedeltas = deque([], maxlen=10)
 
         self._defmgr = DefinitionManager(
             ecuflashRoot=self._prefs['ECUFlashRepo'].Value,
@@ -57,7 +64,6 @@ class PyrrhicController(object):
         )
 
         self.refresh_interfaces()
-        self._roms = {}
 
 # Preferences
     def process_preferences(self):
@@ -173,13 +179,15 @@ class PyrrhicController(object):
             self._logger_frame.on_connection(connected=False)
 
             # remove all parameters from UI
-            params = self._query.Parameters
-            for p in params:
-                self.LoggerFrame.remove_gauge(p)
-                p.disable()
+            if self._query:
+                params = self._query.Parameters
+                for p in params:
+                    self.LoggerFrame.remove_gauge(p)
+                    p.disable()
 
             self._query_cls = None
             self._query = None
+            self._query_timedeltas.clear()
 
     def check_logger(self):
         "Idle event handler that checks logging thread for updates."
@@ -198,7 +206,16 @@ class PyrrhicController(object):
                 elif msg == 'QueryResponse':
 
                     try:
-                        self._query.extract_values(data)
+                        dt, query_data = data
+                        self._query.extract_values(query_data)
+
+                        self._query_timedeltas.append(dt)
+
+                        if len(self._query_timedeltas) == self._query_timedeltas.maxlen:
+                            deltas = [x.total_seconds() for x in self._query_timedeltas]
+                            avg_freq = 1/(sum(deltas)/len(deltas))
+                            self._logger_frame.update_freq(avg_freq)
+
                     except LogQueryParseError as e:
                         _logger.exception(e.message)
 
@@ -254,6 +271,7 @@ class PyrrhicController(object):
             _logger.info(
                 'Connected to {}: {}'.format(endpoint.name, identifier)
             )
+
             self._logger_frame.on_connection(log_def=d)
         else:
             _logger.info(
