@@ -14,8 +14,8 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from .ssm_mock import MockSSM
-from ....comms.protocol.ssm import SSMQuery
+from ....comms.protocol.ssm import SSMTranslator
 
 _protocols = {
-    'Mock SSM': (MockSSM, SSMQuery)
+    'Mock SSM': (MockSSM, SSMTranslator)
 }

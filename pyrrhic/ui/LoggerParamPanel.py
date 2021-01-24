@@ -15,64 +15,95 @@
 
 import wx
 
+from wx import dataview as dv
+
 from .panelsBase import bLoggerParamPanel
-from ..common.rom import PyrrhicLoggerViewModel
-from ..common.enums import LogParamType
+from .ViewModels import TranslatorViewModel, OptionalToggleRenderer
 
 class LoggerParamPanel(bLoggerParamPanel):
     def __init__(self, *args):
         super(LoggerParamPanel, self).__init__(*args)
         self._controller = self.Parent.Controller
 
-    def initialize(self, logger_def):
-        self._selected_model = PyrrhicLoggerViewModel(logger_def, selected=True)
-        self._selected_dvc.AssociateModel(self._selected_model)
-        self._selected_model.DecRef()
-        self._selected_dvc.AppendTextColumn('Name', 0)
+    def initialize(self, translator):
+        self._model = TranslatorViewModel(translator)
+        self._dvc.AssociateModel(self._model)
+        self._model.DecRef()
 
-        self._available_model = PyrrhicLoggerViewModel(logger_def)
-        self._available_dvc.AssociateModel(self._available_model)
-        self._available_model.DecRef()
-        self._available_dvc.AppendTextColumn('Name', 0)
+        _toggle_rend = OptionalToggleRenderer(
+            mode=dv.DATAVIEW_CELL_ACTIVATABLE,
+        )
 
-        # get minimal row size for the current font size
-        font = self._selected_dvc.GetFont()
+        # determine row/col widths
+        font = self._dvc.GetFont()
         dc = wx.ScreenDC()
         dc.SetFont(font)
+
+        # get minimal row size for the current font size
         row_height = dc.GetTextExtent('test')[1]
+        box_width = _toggle_rend.Size
+        id_width = dc.GetTextExtent('X1234')[0]
         del dc
 
-        self._selected_dvc.SetRowHeight(row_height)
-        self._available_dvc.SetRowHeight(row_height)
+        self._dvc.SetRowHeight(max(box_width, row_height))
+
+        _toggle_col = dv.DataViewColumn(
+            '', _toggle_rend, 0, width=box_width*3,
+            align=wx.ALIGN_RIGHT, flags=0
+        )
+        self._dvc.AppendColumn(_toggle_col)
+
+        self._dvc.AppendTextColumn(
+            'ID',
+            1,
+            width=id_width,
+            align=wx.ALIGN_LEFT,
+            flags=dv.DATAVIEW_COL_SORTABLE,
+        )
+
+        self._dvc.AppendTextColumn(
+            'Name',
+            2,
+            align=wx.ALIGN_LEFT,
+            flags=dv.DATAVIEW_COL_SORTABLE | dv.DATAVIEW_COL_RESIZABLE,
+        )
+
+        self._dvc.GetColumn(2).SetSortOrder(True)
 
     def clear(self):
-        self._selected_dvc.ClearColumns()
-        self._available_dvc.ClearColumns()
+        self._dvc.ClearColumns()
 
     def update_model(self):
-        self._selected_model.Cleared()
-        self._available_model.Cleared()
+        self._model.Cleared()
 
-    def OnSelectAvailable(self, event):
-        m = self._available_model
-        nodes = [m.ItemToObject(x) for x in self._available_dvc.GetSelections()]
-        self._but_add.Enable(all([isinstance(x[0], LogParamType) for x in nodes]))
+    def OnSelectParam(self, event):
+        pass
 
-    def OnSelectSelected(self, event):
-        m = self._selected_model
-        nodes = [m.ItemToObject(x) for x in self._selected_dvc.GetSelections()]
-        self._but_rem.Enable(all([isinstance(x[0], LogParamType) for x in nodes]))
+    def OnUpdateParams(self, event):
+        # TODO: veto enabling of parameters if beyond query capacity
+        self._controller.update_log_params()
 
-    def OnAddParam(self, event):
-        m = self._available_model
-        nodes = [m.ItemToObject(x) for x in self._available_dvc.GetSelections()]
-        nodes = list(filter(lambda x: isinstance(x[0], LogParamType), nodes))
-        params = [x[2] for x in nodes]
-        self._controller.add_log_params(params)
+    def OnEditItem(self, event):
+        event.Skip()
 
-    def OnRemoveParam(self, event):
-        m = self._selected_model
-        nodes = [m.ItemToObject(x) for x in self._selected_dvc.GetSelections()]
-        nodes = list(filter(lambda x: isinstance(x[0], LogParamType), nodes))
-        params = [x[2] for x in nodes]
-        self._controller.remove_log_params(params)
+    # def OnSelectAvailable(self, event):
+    #     m = self._model
+    #     nodes = [m.ItemToObject(x) for x in self._dvc.GetSelections()]
+    #     self._but_add.Enable(all([isinstance(x[0], LogParamType) for x in nodes]))
+
+    # def OnSelectSelected(self, event):
+    #     #nodes = [m.ItemToObject(x) for x in self._selected_dvc.GetSelections()]
+    #     self._but_rem.Enable(all([isinstance(x[0], LogParamType) for x in nodes]))
+
+    # def OnAddParam(self, event):
+    #     m = self._model
+    #     nodes = [m.ItemToObject(x) for x in self._dvc.GetSelections()]
+    #     nodes = list(filter(lambda x: isinstance(x[0], LogParamType), nodes))
+    #     params = [x[2] for x in nodes]
+    #     self._controller.add_log_params(params)
+
+    # def OnRemoveParam(self, event):
+    #     #nodes = [m.ItemToObject(x) for x in self._selected_dvc.GetSelections()]
+    #     nodes = list(filter(lambda x: isinstance(x[0], LogParamType), nodes))
+    #     params = [x[2] for x in nodes]
+    #     self._controller.remove_log_params(params)

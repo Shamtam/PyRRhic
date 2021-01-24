@@ -37,7 +37,6 @@ class CommsWorker(PyrrhicWorker):
         self._interface = self._protocol.Interface
         self._state = CommsState.UNDEFINED
         self._last_init_time = datetime.now() - timedelta(seconds=5)
-        self._last_response_time = None
         self._current_endpoint = kwargs.pop('endpoint', LoggerEndpoint.ECU)
         self._current_query = None
         self._current_filepath = None
@@ -135,7 +134,6 @@ class CommsWorker(PyrrhicWorker):
                 else:
                     self._state &= ~flags
 
-
         else:
             self._current_query = None
             self._state &= ~CommsState.HAS_QUERY
@@ -155,14 +153,7 @@ class CommsWorker(PyrrhicWorker):
 
         # got a response, push it to main thread to update
         if resp:
-            cur_time = datetime.now()
-            dt = (
-                cur_time - self._last_response_time
-                if self._last_response_time is not None
-                else timedelta(seconds=0.0)
-            )
-            self._last_response_time = datetime.now()
-            self._out_q.put(PyrrhicMessage('QueryResponse', data=(dt, resp)))
+            self._out_q.put(PyrrhicMessage('QueryResponse', data=resp))
 
             # if non-continuous, reset the waiting flag
             if not (self._state & CommsState.CONT_QUERY):

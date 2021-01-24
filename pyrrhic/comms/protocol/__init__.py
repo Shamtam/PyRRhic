@@ -14,7 +14,7 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from ... import _debug
-from .base import LogQueryParseError
+from .base import TranslatorParseError
 from .ssm import protocols as ssm_protocols
 
 def get_all_protocols():

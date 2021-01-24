@@ -13,7 +13,12 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-class LogQueryParseError(Exception):
+from collections import deque
+from datetime import datetime, timedelta
+
+from ...common.definitions import RRLoggerDef
+
+class TranslatorParseError(Exception):
     pass
 
 class EndpointProtocol(object):
@@ -72,32 +77,48 @@ class EndpointProtocol(object):
         "Returns the `LoggerProtocol` implemented by this instance"
         return self._protocol
 
-class LogQuery(object):
-    """Base class for translation layers that handle the implementation
-        details of translating between a particular `EndpointProtocol` and """
+class EndpointTranslator(object):
+    """Translation layer base class that handles implementation
+    details of translating raw byte data to/from an `EndpointProtocol`"""
 
     _max_request = None
 
-    def __init__(self, params):
-        self._params = params
+    def __init__(self):
+        self._log_def = None
+        self._reset_freq_avg()
 
-    def generate_request(self, params):
+    def generate_request(self):
         """Return a `3-tuple` used to request a query from the endpoint.
 
         The returned `tuple` looks like `(func, args, kwargs)`, where
-        `func` is the name of the `EndpointProtocol` callable that is called
-        to send the request to the endpoint, and `args` and `kwargs`
-        are arguments and keywords to pass to the callable.
+        `func` is the name of the `EndpointProtocol` callable that is
+        called to send the request to the endpoint, and `args` and
+        `kwargs` are arguments and keywords to pass to the callable.
         """
         raise NotImplementedError
 
-    def extract_values(self, resp):
-        """Update the param values from the given byte string.
+    def extract_parameters(self, resp):
+        """Update the current param values from the given byte string.
 
         Arguments:
         - `resp`: `bytes` containing the raw data from the endpoint
         """
         raise NotImplementedError
+
+    def _reset_freq_avg(self):
+        self._resp_times = deque([], maxlen=10)
+        self._last_resp_time = datetime.now()
+        self._avg_freq = 0.0
+
+    def _update_freq_avg(self):
+        cur_time = datetime.now()
+        dt = cur_time - self._last_resp_time
+        self._resp_times.append(dt)
+        self._last_resp_time = cur_time
+
+        if len(self._resp_times) == self._resp_times.maxlen:
+            deltas = [x.total_seconds() for x in self._resp_times]
+            self._avg_freq = 1/(sum(deltas)/len(deltas))
 
     @property
     def MaxRequestSize(self):
@@ -105,5 +126,29 @@ class LogQuery(object):
         return self._max_request
 
     @property
-    def Parameters(self):
-        return self._params
+    def Definition(self):
+        return self._log_def
+
+    @Definition.setter
+    def Definition(self, d):
+        if isinstance(d, RRLoggerDef):
+            self._log_def = d
+
+    @property
+    def EnabledParams(self):
+        if self._log_def:
+            return [x for x in self._log_def.AllParameters.values() if x.Enabled]
+        else:
+            return []
+
+    @property
+    def EnabledSwitches(self):
+        if self._log_def:
+            return [x for x in self._log_def.AllSwitches.values() if x.Enabled]
+        else:
+            return []
+
+    @property
+    def AverageFreq(self):
+        "Average frequency of response updates, in Hz"
+        return self._avg_freq

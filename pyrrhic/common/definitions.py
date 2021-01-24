@@ -18,9 +18,11 @@ import os
 import xml.etree.ElementTree as ET
 
 from .helpers import PyrrhicJSONSerializable
-from .structures import Scaling, TableDef, LogParam
+from .structures import (
+    Scaling, TableDef, LogParam, StdParam, ExtParam, SwitchParam, DTCParam
+)
 from .enums import (
-    DataType, LogParamType, LoggerEndpoint, LoggerProtocol, UserLevel,
+    DataType, LoggerEndpoint, LoggerProtocol, UserLevel,
     _dtype_size_map, _ecuflash_to_dtype_map, _rrlogger_to_dtype_map
 )
 
@@ -174,8 +176,7 @@ class DefinitionManager(object):
         root = ET.parse(filepath)
         xml_protocols = [x for x in root.iter('protocol')]
 
-        _defs = {
-        }
+        _defs = {}
 
         for xml_protocol in xml_protocols:
             protocol = xml_protocol.attrib.get('id', None)
@@ -214,10 +215,13 @@ class DefinitionManager(object):
                     xml_conversions = param.iter('conversion')
 
                     # extract scalings
-                    param_scalings = {
-                        '{}_Conv{}'.format(ident, idx): conv
-                        for idx, conv in enumerate(xml_conversions)
-                    }
+                    param_scalings = {}
+                    for idx, conv in enumerate(xml_conversions):
+                        name = (
+                            conv.attrib['units'] if 'units' in conv.attrib
+                            else 'Conv{}'.format(idx)
+                        )
+                        param_scalings['{}_{}'.format(ident, name)] = conv
 
                     # store parameter information to base definition
                     _defs[protocol]['Base']['params'][ident] = {
@@ -782,15 +786,15 @@ class RRLoggerDef(object):
         - parameters [`{}`] - `dict` of logger parameters containing all
             `parameter` and `ecuparam` definitions. The dict should be
             keyed by the identifier of the parameter, and the value for
-            each key is a `LogParam`
+            each key is a `StdParam` or `ExtParam`
 
         - switches [`{}`] - `dict` of logger switches. The dict should
             be keyed by the identifier of the switch, and the value for
-            each key is a `LogParam`
+            each key is a `SwitchParam`
 
         - dtcodes [`{}`] - `dict` of logger dtcodes. The dict should
             be keyed by the identifier of the dtcode, and the value for
-            each key is a `LogParam`
+            each key is a `DTCParam`
         """
         self._identifier = identifier
 
@@ -881,43 +885,38 @@ class RRLoggerDef(object):
                         self._all_scalings[sname] = sc
 
         # resolve parameters
-        param_names = list(
+        param_ids = list(
             filter(
-                lambda x: not isinstance(self._parameters[x], LogParam),
+                lambda x: not isinstance(
+                    self._parameters[x], (StdParam, ExtParam)
+                ),
                 self._parameters
             )
         )
-        for pname in param_names:
-            pinfo = self._parameters[pname]
+        for pid in param_ids:
+            pinfo = self._parameters[pid]
             xml_param = pinfo['param']
             xml_scalings = pinfo.get('scalings', {})
             xml_addrs = pinfo.get('addrs', [])
-
-            ptype = (
-                LogParamType.STD_PARAM if xml_param.tag == 'parameter'
-                else LogParamType.EXT_PARAM
+            param_class = (
+                StdParam if xml_param.tag == 'parameter'
+                else ExtParam
             )
 
             kw = {}
-            kw['Name'] = xml_param.attrib['name']
-            kw['Description'] = xml_param.attrib['desc']
-            kw['Target'] = LoggerEndpoint(int(xml_param.attrib['target']))
-
-            byteidx = xml_param.attrib.get('ecubyteindex', None)
-            bitidx = xml_param.attrib.get('ecubit', None)
-
-            if byteidx:
-                kw['ECUByteIndex'] = int(byteidx)
-            if bitidx:
-                kw['ECUBit'] = int(bitidx)
+            name = xml_param.attrib['name']
+            desc = xml_param.attrib['desc']
+            endpoint = LoggerEndpoint(int(xml_param.attrib['target']))
 
             # determine addresses and byte/bit indices
-            if ptype == LogParamType.STD_PARAM:
+            if param_class == StdParam:
+                kw['ECUByteIndex'] = int(xml_param.attrib.get('ecubyteindex'))
+                kw['ECUBit'] = int(xml_param.attrib.get('ecubit'))
                 kw['Addresses'] = [
                     int(x.text, base=16) for x in xml_param.findall('address')
                 ]
 
-            elif ptype == LogParamType.EXT_PARAM and 'Base' not in self.Identifier:
+            elif param_class == ExtParam and 'Base' not in self.Identifier:
                 kw['Addresses'] = [int(x.text, base=16) for x in xml_addrs]
 
             # determine datatype from conversions with a `storagetype` specified
@@ -926,7 +925,7 @@ class RRLoggerDef(object):
             )
             if convs:
                 conv = convs[0]
-                kw['Datatype'] = _rrlogger_to_dtype_map[conv.attrib['storagetype']]
+                dtype = _rrlogger_to_dtype_map[conv.attrib['storagetype']]
 
             # try and determine datatype from address if necessary
             else:
@@ -945,12 +944,21 @@ class RRLoggerDef(object):
                     4: DataType.FLOAT
                 }
 
-                kw['Datatype'] = _length_to_dtype_map[length]
+                dtype = _length_to_dtype_map[length]
 
-                _sc_name = '{}_Conv0'.format(pname)
-                kw['Scaling'] = self._all_scalings.get(_sc_name, None)
+            # determine scalings and default scaling
+            kw['Scalings'] = {
+                k: v for k, v in self._all_scalings.items()
+                if k in xml_scalings
+            }
+            kw['Scaling'] = (
+                list(kw['Scalings'].values())[0] if kw['Scalings']
+                else None
+            )
 
-            self._parameters[pname] = LogParam(self, pname, ptype, **kw)
+            self._parameters[pid] = param_class(
+                self, pid, name, desc, dtype, endpoint, **kw
+            )
 
         self._all_parameters = {k: v for k, v in self._parameters.items()}
 
@@ -962,33 +970,29 @@ class RRLoggerDef(object):
                         self._all_parameters[pid] = par
 
         # resolve switches
-        switch_names = list(
+        switch_ids = list(
             filter(
-                lambda x: not isinstance(self._switches[x], LogParam),
+                lambda x: not isinstance(self._switches[x], SwitchParam),
                 self._switches
             )
         )
-        for pname in switch_names:
-            xml_switch = self._switches[pname]
-            ptype = LogParamType.SWITCH
+        for pid in switch_ids:
+            xml_switch = self._switches[pid]
 
             kw = {}
-            kw['Name'] = xml_switch.attrib['name']
-            kw['Description'] = xml_switch.attrib['desc']
-            kw['Target'] = LoggerEndpoint(int(xml_switch.attrib['target']))
+            name = xml_switch.attrib['name']
+            desc = xml_switch.attrib['desc']
+            endpoint = LoggerEndpoint(int(xml_switch.attrib['target']))
 
-            byteidx = xml_switch.attrib.get('ecubyteindex', None)
-            bitidx = xml_switch.attrib['bit']
+            kw['ECUByteIndex'] = int(xml_switch.attrib.get('ecubyteindex'))
+            kw['ECUBit'] = int(xml_switch.attrib['bit'])
+            dtype = DataType(kw['ECUBit'])
 
-            if byteidx:
-                kw['ECUByteIndex'] = int(byteidx)
-            if bitidx:
-                kw['ECUBit'] = int(bitidx)
-
-            kw['Datatype'] = DataType(kw['ECUBit'])
             kw['Addresses'] = [int(xml_switch.attrib['byte'], base=16)]
 
-            self._switches[pname] = LogParam(self, pname, ptype, **kw)
+            self._switches[pid] = SwitchParam(
+                self, pid, name, desc, dtype, endpoint, **kw
+            )
 
         self._all_switches.update({k: v for k, v in self._switches.items()})
 
@@ -1000,25 +1004,26 @@ class RRLoggerDef(object):
                         self._all_switches[pid] = par
 
         # resolve dtcodes
-        dtcode_names = list(
+        dtc_ids = list(
             filter(
-                lambda x: not isinstance(self._dtcodes[x], LogParam),
+                lambda x: not isinstance(self._dtcodes[x], DTCParam),
                 self._dtcodes
             )
         )
-        for pname in dtcode_names:
-            xml_dtcode = self._dtcodes[pname]
-            ptype = LogParamType.DTCODE
+        for pid in dtc_ids:
+            xml_dtcode = self._dtcodes[pid]
 
             kw = {}
-            kw['Name'] = xml_dtcode.attrib['name']
-            kw['Description'] = xml_dtcode.attrib['desc']
-            kw['Target'] = LoggerEndpoint.ECU
-            kw['Datatype'] = DataType(int(xml_dtcode.attrib['bit']))
-            kw['TempAddr'] = int(xml_dtcode.attrib['tmpaddr'], base=16)
-            kw['MemAddr'] = int(xml_dtcode.attrib['memaddr'], base=16)
+            name = xml_dtcode.attrib['name']
+            desc = xml_dtcode.attrib['desc']
+            endpoint = LoggerEndpoint.ECU
+            dtype = DataType(int(xml_dtcode.attrib['bit']))
+            tmpaddr = int(xml_dtcode.attrib['tmpaddr'], base=16)
+            memaddr = int(xml_dtcode.attrib['memaddr'], base=16)
 
-            self._dtcodes[pname] = LogParam(self, pname, ptype, **kw)
+            self._dtcodes[pid] = DTCParam(
+                self, pid, name, desc, dtype, endpoint, tmpaddr, memaddr
+            )
 
         self._all_dtcodes.update({k: v for k, v in self._dtcodes.items()})
 
@@ -1032,17 +1037,19 @@ class RRLoggerDef(object):
         self._initialized = True
 
     def resolve_valid_params(self, capabilities):
-        for par in list(self._all_parameters.values()) + list(self._all_switches.values()):
-            ptype = par.ParamType
-            byte_idx = par.ByteIndex
-            bit_idx = par.BitIndex
-            if byte_idx is not None and bit_idx is not None:
-                if capabilities[byte_idx] >> bit_idx & 0x01 == 0x01:
-                    par.set_supported()
-            elif ptype == LogParamType.EXT_PARAM and par.Addresses:
-                par.set_supported()
-            else:
-                par.set_unsupported()
+        for p in (
+            list(self._all_parameters.values())
+            + list(self._all_switches.values())
+        ):
+            if isinstance(p, (StdParam, SwitchParam)):
+                byte_idx = p.ByteIndex
+                bit_idx = p.BitIndex
+                if (capabilities[byte_idx] >> bit_idx) & 0x01 == 0x01:
+                    p.set_supported()
+
+            elif isinstance(p, ExtParam):
+                if p.Addresses:
+                    p.set_supported()
 
     @property
     def Identifier(self):

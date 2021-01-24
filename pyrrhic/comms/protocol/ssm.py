@@ -13,17 +13,12 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import struct
-
 from PyJ2534 import IoctlParameter, ProtocolFlags
 
 from ... import _debug
-from ...common.enums import (
-    DataType, LogParamType, LoggerEndpoint, LoggerProtocol,
-    _dtype_size_map, _dtype_struct_map
-)
+from ...common.enums import LoggerEndpoint, LoggerProtocol, _dtype_size_map
 from ..phy.j2534 import J2534PassThru_ISO9141
-from .base import EndpointProtocol, LogQuery, LogQueryParseError
+from .base import EndpointProtocol, EndpointTranslator, TranslatorParseError
 
 _ssm_endpoint_map = {
     LoggerEndpoint.ECU : b'\x10',
@@ -231,42 +226,42 @@ class SSM_ISO9141(SSMProtocol):
             if len(msg) > 5:
                 return msg[5:-1]
 
-class SSMQuery(LogQuery):
-    """SSM fast-poll (continuous read) query"""
+class SSMTranslator(EndpointTranslator):
+    """SSM fast-poll (continuous read) translator"""
 
     _max_request = 0xFF // 3 # need 3 bytes for each address in SSM A8 request
 
-    def __init__(self, params):
-        super(SSMQuery, self).__init__(params)
+    def __init__(self):
+        super(SSMTranslator, self).__init__()
         self._addr_map = {}
 
     def generate_request(self):
+        if not self._log_def:
+            raise RuntimeError(
+                'Translator error, Unspecified logger definition'
+            )
+
         self._addr_map = {}
 
-        switches = filter(
-            lambda x: x.ParamType == LogParamType.SWITCH,
-            self._params
-        )
-        params = filter(
-            lambda x: x.ParamType in (
-                LogParamType.STD_PARAM, LogParamType.EXT_PARAM
-            ),
-            self._params
-        )
-
         # add switch addresses
-        for s in switches:
+        for s in self.EnabledSwitches:
             for a in s.Addresses:
                 if a not in self._addr_map:
                     self._addr_map[a] = None
 
         # add parameter addresses
-        for p in params:
-            for base_addr in p.Addresses:
-                psize = _dtype_size_map[p.Datatype]
-                for a in range(base_addr, base_addr + psize):
-                    if a not in self._addr_map:
-                        self._addr_map[a] = None
+        for p in self.EnabledParams:
+            psize = _dtype_size_map[p.Datatype]
+            addrs = []
+            if len(p.Addresses) == psize:
+                addrs = p.Addresses
+            elif len(p.Addresses) == 1:
+                base_addr = p.Addresses[0]
+                addrs = range(base_addr, base_addr + psize)
+
+            for a in addrs:
+                if a not in self._addr_map:
+                    self._addr_map[a] = None
 
         func = 'read_addresses'
         args = list(self._addr_map.keys())
@@ -274,42 +269,51 @@ class SSMQuery(LogQuery):
         return (func, args, kwargs, True)
 
     def extract_values(self, resp):
-        if not len(resp) == len(self._addr_map):
-            raise LogQueryParseError(
-                'Unexpected response, mismatch between number of bytes in '
-                'response and expected query length'
+        if not self._log_def:
+            raise RuntimeError(
+                'Translator error, Unspecified logger definition'
             )
+
+        if not len(resp) == len(self._addr_map):
+            raise TranslatorParseError(
+                'Unexpected response, mismatch between number of bytes '
+                'in response and expected query length'
+            )
+
+        self._update_freq_avg()
 
         # map response string bytes into address map
         for a in self._addr_map:
             self._addr_map[a] = resp[0:1]
             resp = resp[1:]
 
-        # populate values into params
-        for p in self._params:
+        # populate switch values
+        for s in self.EnabledSwitches:
+            addr = s.Addresses[0]
+            raw_byte = self._addr_map[addr]
+            bit = s.Datatype
 
-            if p.ParamType == LogParamType.SWITCH:
-                addr = p.Addresses[0]
-                raw_byte = self._addr_map[addr]
-                bit = p.Datatype
-                val = int.from_bytes(raw_byte, 'big') >> bit & 0x01 # TODO: implement byteorder in Param
-                p.Value = val
+            # TODO: implement byteorder
+            s.RawValue = (
+                True if (int.from_bytes(raw_byte, 'big') >> bit) & 0x01
+                else False
+            )
 
-            elif p.ParamType in [LogParamType.STD_PARAM, LogParamType.EXT_PARAM]:
-                psize = _dtype_size_map[p.Datatype]
-                addrs = []
-                if len(p.Addresses) == psize:
-                    addrs = p.Addresses
-                elif len(p.Addresses) == 1:
-                    base_addr = p.Addresses[0]
-                    addrs = range(base_addr, base_addr + psize)
+        # populate param values
+        for p in self.EnabledParams:
+            psize = _dtype_size_map[p.Datatype]
+            addrs = []
+            if len(p.Addresses) == psize:
+                addrs = p.Addresses
+            elif len(p.Addresses) == 1:
+                base_addr = p.Addresses[0]
+                addrs = range(base_addr, base_addr + psize)
 
-                if addrs:
-                    unpack_key = _dtype_struct_map[p.Datatype]
-                    raw_bytes = b''.join([self._addr_map[a] for a in addrs])
-                    val = struct.unpack(unpack_key, raw_bytes)[0]
-                    p.Value = val
+            if addrs:
+                p.RawValue = b''.join([self._addr_map[a] for a in addrs])
+            else:
+                p.RawValue = None
 
 protocols = {
-    'SSM (K-line)': (SSM_ISO9141, SSMQuery)
+    'SSM (K-line)': (SSM_ISO9141, SSMTranslator)
 }

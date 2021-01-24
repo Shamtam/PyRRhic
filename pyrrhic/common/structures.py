@@ -15,6 +15,7 @@
 
 import logging
 import numpy as np
+import struct
 
 from sympy import sympify, lambdify, solve
 from math import prod
@@ -384,27 +385,21 @@ class RomTable(object):
 class LogParam(object):
     "Base class for logger elements"
 
-    def __init__(self, parent, identifier, ptype, **kwargs):
+    def __init__(self, parent, identifier, name, desc, dtype, endpoint):
         self._parent = parent
         self._identifier = identifier
-        self._ptype = ptype
-        self._name = kwargs.pop('Name', 'LogParam_{}'.format(identifier))
-        self._desc = kwargs.pop('Description', '')
-        self._addrs = kwargs.pop('Addresses', None)
-        self._byteidx = kwargs.pop('ECUByteIndex', None)
-        self._bitidx = kwargs.pop('ECUBit', None)
-        self._scaling = kwargs.pop('Scaling', None)
-        self._datatype = kwargs.pop('Datatype', None)
-        self._tempaddr = kwargs.pop('TempAddr', None)
-        self._memaddr = kwargs.pop('MemAddr', None)
-        self._target = kwargs.pop('Target', None)
+        self._name = name #kwargs.pop('Name', 'LogParam_{}'.format(identifier))
+        self._desc = desc #kwargs.pop('Description', '')
+        self._datatype = dtype
+        self._endpoint = endpoint
+
         self._enabled = False
         self._supported = False
         self._value = None
 
     def __repr__(self):
         return '<{} {}: {}>'.format(
-            self._ptype.name, self._identifier, self._name
+            type(self).__name__, self._identifier, self._name
         )
 
     def enable(self):
@@ -429,14 +424,6 @@ class LogParam(object):
         return self._identifier
 
     @property
-    def ParamType(self):
-        return self._ptype
-
-    @property
-    def Target(self):
-        return self._target
-
-    @property
     def Name(self):
         return self._name
 
@@ -445,41 +432,12 @@ class LogParam(object):
         return self._desc
 
     @property
-    def Addresses(self):
-        return self._addrs
-
-    @property
-    def ByteIndex(self):
-        return self._byteidx
-
-    @property
-    def BitIndex(self):
-        return self._bitidx
-
-    @property
-    def Scaling(self):
-        return self._scaling
-
-    @Scaling.setter
-    def Scaling(self, s):
-        if isinstance(s, Scaling):
-            self._scaling = s
-
-    @property
     def Datatype(self):
         return self._datatype
 
     @property
-    def TempAddr(self):
-        return self._tempaddr
-
-    @property
-    def MemAddr(self):
-        return self._memaddr
-
-    @property
-    def Target(self):
-        return self._target
+    def Endpoint(self):
+        return self._endpoint
 
     @property
     def Enabled(self):
@@ -492,15 +450,179 @@ class LogParam(object):
         return False
 
     @property
-    def Value(self):
+    def RawValue(self):
         return self._value
 
-    @Value.setter
-    def Value(self, val):
-        # TODO: force type checking here
+    @RawValue.setter
+    def RawValue(self, val):
         self._value = val
 
     @property
-    def DisplayValue(self):
-        # TODO: update this to properly format values
-        return '{}'.format(self._value) if self._value is not None else None
+    def Value(self):
+        if isinstance(self, (StdParam, ExtParam)):
+            if self._value is not None:
+                if self._scaling is not None:
+                    key = _dtype_struct_map[self._datatype]
+                    order = '>' # TODO: implement byte order
+                    val = struct.unpack('{}{}'.format(order, key), self._value)[0]
+                    return self._scaling.to_disp(val)
+                else:
+                    return int.from_bytes(self._value, 'big')
+            else:
+                return None
+        else:
+            return self._value
+
+    @property
+    def ValueStr(self):
+
+        if isinstance(self, SwitchParam):
+            if self._value is None:
+                return ''
+            else:
+                return 'True' if self._value else 'False'
+
+        elif isinstance(self, (StdParam, ExtParam)):
+            if self._value is None:
+                return ''
+            elif self._scaling is not None:
+                return '{:.4g}'.format(self.Value) # TODO: implement proper formatting
+            else:
+                return self._value.hex()
+
+        else:
+            return '{}'.format(self._value)
+
+class StdParam(LogParam):
+    "Standard Parameter"
+
+    def __init__(self, *args, **kwargs):
+        """Initializer
+
+        Positional arguments directly passed to base class `__init__`,
+        use keywords to initialize the instance. Any supplied keywords
+        must be correctly typed or they'll be ignored; refer to property
+        descriptions for correct types.
+        """
+        super(StdParam, self).__init__(*args)
+        self._addrs = kwargs.pop('Addresses', None)
+        self._bitidx = kwargs.pop('ECUBit')
+        self._byteidx = kwargs.pop('ECUByteIndex')
+        self._scalings = kwargs.pop('Scalings', {})
+        self._scaling = kwargs.pop('Scaling', None)
+
+    @property
+    def Addresses(self):
+        "`list` of `int`"
+        return self._addrs
+
+    @property
+    def BitIndex(self):
+        "`int`"
+        return self._bitidx
+
+    @property
+    def ByteIndex(self):
+        "`int`"
+        return self._byteidx
+
+    @property
+    def Scalings(self):
+        "`list` of `str` indicating scalings used by this parameter"
+        return list(self._scalings.keys())
+
+    @property
+    def Scaling(self):
+        "`Scaling` instance, or `None`"
+        return self._scaling
+
+    @Scaling.setter
+    def Scaling(self, scale_name):
+        "Set the current scaling"
+        self._scaling = (
+            self._scalings[scale_name]
+            if scale_name in self._scalings
+            else None
+        )
+
+class ExtParam(LogParam):
+    "Extended (endpoint-specific) Parameter"
+
+    def __init__(self, *args, **kwargs):
+        """Initializer
+
+        Positional arguments directly passed to base class `__init__`,
+        use keywords to initialize the instance. Any supplied keywords
+        must be correctly typed or they'll be ignored; refer to property
+        descriptions for correct types.
+        """
+        super(ExtParam, self).__init__(*args)
+        self._addrs = kwargs.pop('Addresses', None)
+        self._scalings = kwargs.pop('Scalings', {})
+        self._scaling = kwargs.pop('Scaling', None)
+
+    @property
+    def Addresses(self):
+        "`list` of `int`"
+        return self._addrs
+
+    @property
+    def Scalings(self):
+        "`list` of `str` indicating scalings used by this parameter"
+        return list(self._scalings.keys())
+
+    @property
+    def Scaling(self):
+        "`Scaling` instance, or `None`"
+        return self._scaling
+
+    @Scaling.setter
+    def Scaling(self, scale_name):
+        "Set the current scaling"
+        self._scaling = (
+            self._scalings[scale_name]
+            if scale_name in self._scalings
+            else None
+        )
+
+class SwitchParam(StdParam):
+    "Switch Parameter"
+
+    def __init__(self, *args, **kwargs):
+        """Initializer
+
+        Positional arguments directly passed to base class `__init__`,
+        use keywords to initialize the instance. Any supplied keywords
+        must be correctly typed or they'll be ignored; refer to property
+        descriptions for correct types.
+        """
+        kw = {
+            x: kwargs.pop(x) for x in ['ECUByteIndex', 'ECUBit', 'Addresses']
+        }
+        super(SwitchParam, self).__init__(*args, **kw)
+
+class DTCParam(LogParam):
+    "Diagnostic Trouble Codes"
+
+    def __init__(self, *args):
+        """Initializer
+
+        Positional arguments directly passed to base class `__init__`,
+        use keywords to initialize the instance. Any supplied keywords
+        must be correctly typed or they'll be ignored; refer to property
+        descriptions for correct types.
+        """
+        self._tempaddr, self._memaddr = args[-2:]
+        super(DTCParam, self).__init__(*args[:-2])
+
+    @property
+    def TempAddr(self):
+        return self._tempaddr
+
+    @property
+    def MemAddr(self):
+        return self._memaddr
+
+    @property
+    def Valid(self):
+        return True

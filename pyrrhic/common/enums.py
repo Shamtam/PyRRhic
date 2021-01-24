@@ -130,9 +130,3 @@ class LoggerEndpoint(IntEnum):
     ECU     = 1
     TCU     = 2
     ECU_TCU = 3
-
-class LogParamType(IntEnum):
-    STD_PARAM   = auto()
-    EXT_PARAM   = auto()
-    SWITCH      = auto()
-    DTCODE      = auto()

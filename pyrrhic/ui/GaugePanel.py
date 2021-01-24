@@ -26,8 +26,8 @@ class GaugePanel(bGaugePanel):
         self._min = None
         self._max = None
 
-    def update(self):
-        val = self._param.DisplayValue
+    def refresh(self):
+        val = self._param.ValueStr
 
         if val:
             if not self._min:

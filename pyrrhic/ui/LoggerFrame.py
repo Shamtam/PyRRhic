@@ -74,30 +74,25 @@ class LoggerFrame(bLoggerFrame):
     def _pop_right_status(self, event=None):
         self._statusbar.PopStatusText(field=2)
 
-    def update_gauges(self):
-        self._gauge_panel.update_gauges()
+    def refresh_gauges(self):
+        self._gauge_panel.refresh_gauges()
 
-    def on_connection(self, connected=True, log_def=None):
+    def update_gauges(self, params):
+        self._gauge_panel.update_gauges(params)
+
+    def on_connection(self, connected=True, translator=None):
         text = self._disconnect_text if connected else self._connect_text
         self._connect_but.SetLabelText(text)
         self._connect_but.Enable()
         self._enable_toolbar_controls(enable=not connected)
 
         if connected:
-            self._param_panel.initialize(log_def)
-            self.push_status(left='ID: {}'.format(log_def.Identifier))
+            self._param_panel.initialize(translator)
+            self.push_status(left='ID: {}'.format(translator.Definition.Identifier))
             self.push_status(left='Connected', temporary=True)
         else:
             self._param_panel.clear()
             self._pop_left_status()
-
-    def add_gauge(self, param):
-        self._gauge_panel.add_gauge(param)
-        self._param_panel.update_model()
-
-    def remove_gauge(self, param):
-        self._gauge_panel.remove_gauge(param)
-        self._param_panel.update_model()
 
     def push_status(self, left=None, center=None, right=None, temporary=False):
         """Push text to the corresponding portion of the status bar.
@@ -110,11 +105,9 @@ class LoggerFrame(bLoggerFrame):
         """
 
         if isinstance(left, str):
+            self._statusbar.PushStatusText(left, field=0)
             if temporary:
-                self._statusbar.PushStatusText(left, field=0)
                 self._left_status_timer.StartOnce(self._temp_status_delay)
-            else:
-                self._statusbar.SetStatusText(left, i=0)
 
         if isinstance(center, str):
             self._statusbar.PushStatusText(center, field=1)

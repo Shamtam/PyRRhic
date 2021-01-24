@@ -243,46 +243,14 @@ class bLoggerParamPanel ( wx.Panel ):
         _sizer.SetFlexibleDirection( wx.BOTH )
         _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
 
-        self._label_sel_pars = wx.StaticText( self, wx.ID_ANY, u"Selected Parameters", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self._label_sel_pars.Wrap( -1 )
+        self._dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_MULTIPLE|wx.dataview.DV_ROW_LINES )
+        self._dvc.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
 
-        _sizer.Add( self._label_sel_pars, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 5 ), wx.ALIGN_BOTTOM|wx.ALIGN_CENTER_HORIZONTAL, 5 )
-
-        self._selected_dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_MULTIPLE|wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
-        self._selected_dvc.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
-
-        _sizer.Add( self._selected_dvc, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 5 ), wx.EXPAND, 5 )
-
-        self._but_add = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|wx.BORDER_NONE )
-
-        self._but_add.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_UP, wx.ART_BUTTON ) )
-        self._but_add.Enable( False )
-
-        _sizer.Add( self._but_add, wx.GBPosition( 2, 1 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
-
-        self._but_rem = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|wx.BORDER_NONE )
-
-        self._but_rem.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_DOWN, wx.ART_BUTTON ) )
-        self._but_rem.Enable( False )
-
-        _sizer.Add( self._but_rem, wx.GBPosition( 2, 3 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
-
-        self._available_dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_MULTIPLE|wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
-        self._available_dvc.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
-
-        _sizer.Add( self._available_dvc, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 5 ), wx.EXPAND, 5 )
-
-        self._label_av_pars = wx.StaticText( self, wx.ID_ANY, u"Available Parameters", wx.DefaultPosition, wx.DefaultSize, 0 )
-        self._label_av_pars.Wrap( -1 )
-
-        _sizer.Add( self._label_av_pars, wx.GBPosition( 4, 0 ), wx.GBSpan( 1, 5 ), wx.ALIGN_CENTER_HORIZONTAL|wx.ALIGN_TOP, 5 )
+        _sizer.Add( self._dvc, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 1 ), wx.EXPAND, 5 )
 
 
         _sizer.AddGrowableCol( 0 )
-        _sizer.AddGrowableCol( 2 )
-        _sizer.AddGrowableCol( 4 )
-        _sizer.AddGrowableRow( 1 )
-        _sizer.AddGrowableRow( 3 )
+        _sizer.AddGrowableRow( 0 )
 
         self.SetSizer( _sizer )
         self.Layout()
@@ -290,12 +258,10 @@ class bLoggerParamPanel ( wx.Panel ):
 
         # Connect Events
         self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClosePane )
-        self._selected_dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_ACTIVATED, self.OnToggle, id = wx.ID_ANY )
-        self._selected_dvc.Bind( wx.dataview.EVT_DATAVIEW_SELECTION_CHANGED, self.OnSelectSelected, id = wx.ID_ANY )
-        self._but_add.Bind( wx.EVT_BUTTON, self.OnAddParam )
-        self._but_rem.Bind( wx.EVT_BUTTON, self.OnRemoveParam )
-        self._available_dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_ACTIVATED, self.OnToggle, id = wx.ID_ANY )
-        self._available_dvc.Bind( wx.dataview.EVT_DATAVIEW_SELECTION_CHANGED, self.OnSelectAvailable, id = wx.ID_ANY )
+        self._dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_ACTIVATED, self.OnEditItem, id = wx.ID_ANY )
+        self._dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_START_EDITING, self.OnEditItem, id = wx.ID_ANY )
+        self._dvc.Bind( wx.dataview.EVT_DATAVIEW_ITEM_VALUE_CHANGED, self.OnUpdateParams, id = wx.ID_ANY )
+        self._dvc.Bind( wx.dataview.EVT_DATAVIEW_SELECTION_CHANGED, self.OnSelectParam, id = wx.ID_ANY )
 
     def __del__( self ):
         pass
@@ -305,20 +271,14 @@ class bLoggerParamPanel ( wx.Panel ):
     def OnClosePane( self, event ):
         event.Skip()
 
-    def OnToggle( self, event ):
-        event.Skip()
-
-    def OnSelectSelected( self, event ):
-        event.Skip()
-
-    def OnAddParam( self, event ):
-        event.Skip()
-
-    def OnRemoveParam( self, event ):
+    def OnEditItem( self, event ):
         event.Skip()
 
 
-    def OnSelectAvailable( self, event ):
+    def OnUpdateParams( self, event ):
+        event.Skip()
+
+    def OnSelectParam( self, event ):
         event.Skip()
 
 

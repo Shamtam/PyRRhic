@@ -29,7 +29,7 @@ from .common.preferences import PreferenceManager
 from .common.rom import Rom
 
 from .comms.phy import get_all_interfaces
-from .comms.protocol import get_all_protocols, LogQueryParseError
+from .comms.protocol import get_all_protocols, TranslatorParseError
 from .comms.worker import CommsWorker
 
 _logger = logging.getLogger(__name__)
@@ -55,8 +55,7 @@ class PyrrhicController(object):
         self._available_interfaces = {}
         self._logger_frame = logger_frame
         self._comms_worker = None
-        self._query = None
-        self._query_timedeltas = deque([], maxlen=10)
+        self._comms_translator = None
 
         self._defmgr = DefinitionManager(
             ecuflashRoot=self._prefs['ECUFlashRepo'].Value,
@@ -155,17 +154,17 @@ class PyrrhicController(object):
 
     def spawn_logger(self, interface_name, protocol_name):
         iface_phys = self._available_interfaces[interface_name]
-        protocol, query = get_all_protocols()[protocol_name]
+        protocol, translator = get_all_protocols()[protocol_name]
 
         # get specific `CommunicationDevice` subclass for this protocol
         phy = list(protocol._supported_phy.intersection(iface_phys))[0]
 
-        # store the query class
-        self._query_cls = query
-
         # create the worker and spawn the new thread
         self._comms_worker= CommsWorker(interface_name, phy, protocol)
         self._comms_worker.start()
+
+        # instantiate the appropriate `EndpointTranslator`
+        self._comms_translator = translator()
 
     def kill_logger(self):
         if self._comms_worker:
@@ -179,15 +178,15 @@ class PyrrhicController(object):
             self._logger_frame.on_connection(connected=False)
 
             # remove all parameters from UI
-            if self._query:
-                params = self._query.Parameters
-                for p in params:
-                    self.LoggerFrame.remove_gauge(p)
+            self.LoggerFrame.update_gauges([])
+            if self._comms_translator:
+                for p in (
+                    self._comms_translator.EnabledParams
+                    + self._comms_translator.EnabledSwitches
+                ):
                     p.disable()
 
-            self._query_cls = None
-            self._query = None
-            self._query_timedeltas.clear()
+            self._comms_translator = None
 
     def check_logger(self):
         "Idle event handler that checks logging thread for updates."
@@ -206,52 +205,33 @@ class PyrrhicController(object):
                 elif msg == 'QueryResponse':
 
                     try:
-                        dt, query_data = data
-                        self._query.extract_values(query_data)
+                        self._comms_translator.extract_values(data)
+                    except TranslatorParseError as e:
+                        self._logger_frame.push_status(
+                            center=e.message, temporary=True
+                        )
 
-                        self._query_timedeltas.append(dt)
+                    self._logger_frame.update_freq(
+                        self._comms_translator.AverageFreq
+                    )
+                    self._logger_frame.refresh_gauges()
 
-                        if len(self._query_timedeltas) == self._query_timedeltas.maxlen:
-                            deltas = [x.total_seconds() for x in self._query_timedeltas]
-                            avg_freq = 1/(sum(deltas)/len(deltas))
-                            self._logger_frame.update_freq(avg_freq)
-
-                    except LogQueryParseError as e:
-                        _logger.exception(e.message)
-
-                    self._logger_frame.update_gauges()
                 elif msg == 'Exception':
                     raise data
 
-    def add_log_params(self, params):
+    def update_log_params(self):
         if self._comms_worker is not None:
-            new_params = self._query.Parameters + params if self._query else params
-            self._query = self._query_cls(new_params)
-            req = self._query.generate_request() # TODO: runtime endpoint selection
+
+            # get new request and push it to worker thread
+            req = self._comms_translator.generate_request()
             self._comms_worker.InQueue.put(
                 PyrrhicMessage('UpdateQuery', req)
             )
-        for param in params:
-            self.LoggerFrame.add_gauge(param)
-            param.enable()
 
-    def remove_log_params(self, params):
-        if not self._query:
-            return
-
-        if self._comms_worker is not None:
-            new_params = [x for x in self._query.Parameters if x not in params]
-            self._query = self._query_cls(new_params)
-            if new_params:
-                req = self._query.generate_request()
-            else:
-                req = None
-            self._comms_worker.InQueue.put(
-                PyrrhicMessage('UpdateQuery', req)
-            )
-        for param in params:
-            self.LoggerFrame.remove_gauge(param)
-            param.disable()
+            # send enabled parameters to logger frame for gauge updates
+            params = self._comms_translator.EnabledParams
+            switches = self._comms_translator.EnabledSwitches
+            self.LoggerFrame.update_gauges(params + switches)
 
     def _logger_init(self, init_data):
         """
@@ -272,7 +252,8 @@ class PyrrhicController(object):
                 'Connected to {}: {}'.format(endpoint.name, identifier)
             )
 
-            self._logger_frame.on_connection(log_def=d)
+            self._comms_translator.Definition = d
+            self._logger_frame.on_connection(translator=self._comms_translator)
         else:
             _logger.info(
                 'Unable to find logger definition for endpoint {}'.format(
