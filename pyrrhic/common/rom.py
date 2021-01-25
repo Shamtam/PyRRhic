@@ -19,26 +19,38 @@ import os
 from wx import dataview as dv
 
 from ..common.enums import UserLevel
+from ..common.helpers import Container
 from .structures import RomTable
 
 _logger = logging.getLogger(__name__)
 
+# Dummy classes to make ViewModel hierarchy easy to handle
+class InfoContainer(Container):
+    pass
+class TableCategoryContainer(Container):
+    pass
+class TableContainer(Container):
+    pass
+class LogParamContainer(Container):
+    pass
+
 class Rom(object):
     def __init__(self, fpath, raw_data, definition):
         self._filepath = fpath
-        self._bytes = raw_data
+        self._orig_bytes = raw_data
+        self._bytes = bytearray(raw_data)
         self._definition = definition
 
         # dict containing top-level information of the ROM
-        self._info = {}
+        self._info = InfoContainer(self)
 
         # nested `dict` keyed as follows
         # tables[<category>][<name>]
-        self._tables = {}
+        self._tables = TableCategoryContainer(self)
 
         # nested `dict` keyed as follows:
         # log_params[<std|extended>][<name>]
-        self._log_params = {}
+        self._log_params = LogParamContainer(self)
 
         self._initialize()
 
@@ -50,9 +62,11 @@ class Rom(object):
         editor_def = self._definition.EditorDef
         logger_def = self._definition.LoggerDef
 
-        self._info = {k:v for k, v in editor_def.DisplayInfo.items()}
+        self._info = InfoContainer(
+            self, {k:v for k, v in editor_def.DisplayInfo.items()}
+        )
 
-        tables = {}
+        tables = TableCategoryContainer(self)
         for tab in editor_def.AllTables.values():
 
             # only consider tables that are fully defined
@@ -61,7 +75,7 @@ class Rom(object):
 
             cat = tab.Category
             if cat not in tables:
-                tables[cat] = {}
+                tables[cat] = TableContainer(tables, name=cat)
 
             name = tab.Name
             if name in tables:
@@ -76,7 +90,13 @@ class Rom(object):
         self._tables = tables
 
     @property
+    def OriginalBytes(self):
+        '`bytes` object containing the original raw ROM binary'
+        return self._orig_bytes
+
+    @property
     def Bytes(self):
+        'Mutable `bytearray` object containing the current raw ROM binary'
         return self._bytes
 
     @property
@@ -91,185 +111,6 @@ class Rom(object):
     def Tables(self):
         return self._tables
 
-class PyrrhicRomViewModel(dv.PyDataViewModel):
-
-    def __init__(self, controller):
-        super(PyrrhicRomViewModel, self).__init__()
-        self._controller = controller
-        self._roms = controller.LoadedROMs
-
-    def GetColumnCount(self):
-        return 1
-
-    def GetColumnType(self, col):
-        return 'string'
-
-    def GetChildren(self, item, children):
-
-        usrlvl = UserLevel(self._controller.Preferences['UserLevel'].Value)
-
-        # root node, return all ROMs
-        if not item:
-            for fpath in self._roms:
-                rom = self._roms[fpath]
-                children.append(self.ObjectToItem(rom))
-            return len(self._roms)
-
-        node = self.ItemToObject(item)
-
-        # ROM node, return info and table categories
-        if isinstance(node, Rom):
-
-            # generate info container node
-            obj = ('infocontainer', (node, 'Info'))
-            children.append(self.ObjectToItem(obj))
-
-            # generate category nodes
-            categories = []
-            for category in node.Tables:
-                tables = node.Tables[category].values()
-
-                # only append category if all of its tables fall within
-                # the currently selected user level
-                if not all(
-                    [usrlvl.value < x.Definition.Level.value  for x in tables]
-                ):
-                    categories.append(
-                        self.ObjectToItem(('category', (node, category)))
-                    )
-            for x in categories: children.append(x)
-
-            return len(categories) + 1
-
-        # sub-node, either info container, category, or table
-        elif isinstance(node, tuple):
-            node_type, data = node
-
-            # generate info nodes
-            if node_type == 'infocontainer':
-                for k, v in data[0].Info.items():
-                    obj = ('info', (data[0], '{}: {}'.format(k, v)))
-                    children.append(self.ObjectToItem(obj))
-                return len(data[0].Info)
-
-            # category nodes' children are tables
-            if node_type == 'category':
-                tables = []
-                rom, category = data
-                for tab in rom.Tables[category]:
-                    table = rom.Tables[category][tab]
-                    if (table.Definition.Level.value <= usrlvl.value):
-                        tables.append(self.ObjectToItem(
-                            ('table', (node, category, tab)))
-                        )
-                for x in tables: children.append(x)
-                return len(tables)
-
-        return 0
-
-    def GetAttr(self, item, col, attr):
-        if not item:
-            return False
-
-        node = self.ItemToObject(item)
-
-        if isinstance(node, Rom):
-            attr.SetBold(True)
-            return True
-
-        elif isinstance(node, tuple):
-            node_type, data = node
-
-            if node_type == 'info':
-                attr.SetItalic(True)
-                return True
-
-        return False
-
-    def IsContainer(self, item):
-
-        # root is a container
-        if not item:
-            return True
-
-        node = self.ItemToObject(item)
-
-        if isinstance(node, Rom):
-            return True
-        if isinstance(node, tuple) and node[0] in ['infocontainer', 'category']:
-            return True
-
-        return False
-
-    def HasDefaultCompare(self):
-        return True
-
-    def Compare(self, item1, item2, column, ascending):
-        node1 = self.ItemToObject(item1)
-        node2 = self.ItemToObject(item2)
-
-        if all(isinstance(x, tuple) for x in [node1, node2]):
-            node1_type, data1 = node1
-            node2_type, data2 = node2
-
-            # sort categories alphabetically
-            if(
-                all(x == 'category' for x in [node1_type, node2_type]) or
-                all(x == 'table' for x in [node1_type, node2_type]) or
-                all(x == 'info' for x in [node1_type, node2_type])
-            ):
-                return 1 if ascending == (data1[-1] > data2[-1]) else -1
-            elif node1_type == 'infocontainer' and node2_type == 'category':
-                return -1 if ascending else 1
-            elif node2_type == 'infocontainer' and node1_type == 'category':
-                return 1 if ascending else -1
-
-        return 0
-
-    def GetParent(self, item):
-
-        # root has no parent
-        if not item:
-            return dv.NullDataViewItem
-
-        node = self.ItemToObject(item)
-
-        # ROMs have no parent
-        if isinstance(node, Rom):
-            return dv.NullDataViewItem
-
-        elif isinstance(node, tuple):
-            node_type, data = node
-
-            if node_type in ['infocontainer', 'category']:
-                parent = data[0]
-            elif node_type == 'info':
-                parent = ('infocontainer', data)
-            elif node_type == 'table':
-                parent = data[:2]
-
-            else:
-                raise ValueError('Unrecognized node')
-
-            return self.ObjectToItem(parent)
-
-    def HasValue(self, item, col):
-        if col > 0:
-            return False
-        return True
-
-    def GetValue(self, item, col):
-        assert col == 0, "Unexpected column for PyrrhicRomViewModel"
-
-        node = self.ItemToObject(item)
-
-        if isinstance(node, Rom):
-            return '{} ({})'.format(
-                os.path.basename(node.Path),
-                node.Path
-            )
-        elif isinstance(node, tuple):
-            node_type, data = node
-            return data[-1]
-
-        return ''
+    @property
+    def IsModified(self):
+        return self._orig_bytes != self._bytes

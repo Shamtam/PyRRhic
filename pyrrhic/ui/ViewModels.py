@@ -13,10 +13,43 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import os
 import wx
 
-from natsort import natsort_key
+from ..common.enums import UserLevel
+from ..common.helpers import Container
+from ..common.rom import Rom, InfoContainer, TableContainer
+from ..common.structures import RomTable
+
+from natsort import natsort_key, ns
 from wx import dataview as dv
+
+# class ViewNode(object):
+#     """Dummy class to facilitate persistent objects for mapping simple
+#     arbitrary objects to/from items in a `PyDataViewModel`"""
+
+#     def __init__(self, name, parent, data=None):
+#         self._name = name
+#         self._parent = parent
+#         self._data = data
+
+#     def __repr__(self):
+#         return '<ViewNode {}, {}>'.format(
+#             self._name,
+#             repr(self._data) if self._data else 'No Data'
+#         )
+
+#     @property
+#     def Name(self):
+#         return self._name
+
+#     @property
+#     def Parent(self):
+#         return self._parent
+
+#     @property
+#     def Data(self):
+#         return self._data
 
 class OptionalToggleRenderer(dv.DataViewCustomRenderer):
     """Extension of `DataViewToggleRenderer` that optionally omits the checkbox
@@ -72,6 +105,202 @@ class OptionalToggleRenderer(dv.DataViewCustomRenderer):
     def Size(self):
         return self._size
 
+class RomViewModel(dv.PyDataViewModel):
+
+    def __init__(self, controller):
+        super(RomViewModel, self).__init__()
+        self._controller = controller
+        self._roms = controller.LoadedROMs
+
+    def GetColumnCount(self):
+        return 1
+
+    def GetColumnType(self, col):
+        return 'string'
+
+    def GetChildren(self, item, children):
+
+        usrlvl = UserLevel(self._controller.Preferences['UserLevel'].Value)
+
+        # root node, return all ROMs
+        if not item:
+            for fpath in self._roms:
+                rom = self._roms[fpath]
+                children.append(self.ObjectToItem(rom))
+            return len(self._roms)
+
+        node = self.ItemToObject(item)
+
+        # ROM node, return info and table categories
+        if isinstance(node, Rom):
+
+            # generate info container node
+            children.append(self.ObjectToItem(node.Info))
+
+            # generate category nodes
+            categories = []
+            for category in node.Tables:
+                container = node.Tables[category]
+                tables = container.values()
+
+                # only append category if some of its tables fall within
+                # the currently selected user level
+                if not all(
+                    [usrlvl.value < x.Definition.Level.value  for x in tables]
+                ):
+                    categories.append(self.ObjectToItem(container))
+            for x in categories: children.append(x)
+
+            return len(categories) + 1
+
+        # info container node
+        elif isinstance(node, InfoContainer):
+
+            for k, v in node.items():
+                children.append(self.ObjectToItem('{}: {}'.format(k, v)))
+            return len(node)
+
+        # category node
+        elif isinstance(node, TableContainer):
+            for tab in node.values():
+                children.append(self.ObjectToItem(tab))
+            return len(node)
+
+        return 0
+
+    def GetAttr(self, item, col, attr):
+        if not item:
+            return False
+
+        node = self.ItemToObject(item)
+
+        if isinstance(node, Rom):
+            attr.SetItalic(True)
+            attr.SetBold(node.IsModified)
+            return True
+
+        # node is an info entry
+        elif isinstance(node, str):
+            attr.SetItalic(True)
+            return True
+
+        # node is a category
+        elif isinstance(node, TableContainer):
+            attr.SetBold(
+                any([x.IsModified for x in node.values()])
+            )
+            return True
+
+        # mark modified tables bold
+        elif isinstance(node, RomTable):
+            attr.SetBold(node.IsModified)
+            return True
+
+        return False
+
+    def IsContainer(self, item):
+
+        # root is a container
+        if not item:
+            return True
+
+        node = self.ItemToObject(item)
+
+        return (
+            True if isinstance(node, (Rom, InfoContainer, TableContainer))
+            else False
+        )
+
+    def HasDefaultCompare(self):
+        return True
+
+    def Compare(self, item1, item2, column, ascending):
+        node1 = self.ItemToObject(item1)
+        node2 = self.ItemToObject(item2)
+        nodes = [node1, node2]
+
+        # sort ROMs by filepath
+        if all(isinstance(x, Rom) for x in nodes):
+            n1 = natsort_key(node1.Path, alg=ns.PATH)
+            n2 = natsort_key(node2.Path, alg=ns.PATH)
+
+        # sort info entries alphabetically
+        elif all(isinstance(x, str) for x in nodes):
+            n1 = natsort_key(node1)
+            n2 = natsort_key(node2)
+
+        # sort categories alphabetically
+        elif all(isinstance(x, TableContainer) for x in nodes):
+            n1 = natsort_key(node1.Name)
+            n2 = natsort_key(node2.Name)
+
+        # sort tables alphabetically
+        elif all(isinstance(x, RomTable) for x in nodes):
+            n1 = natsort_key(node1.Definition.Name)
+            n2 = natsort_key(node2.Definition.Name)
+
+        # one node is info, the other is category, sort info to top
+        elif type(node1).__name__ != type(node2).__name__:
+            n1 = type(node1).__name__
+            n2 = type(node2).__name__
+
+        else:
+            return 0
+
+        return 1 if ascending == (n1 > n2) else -1
+
+    def GetParent(self, item):
+
+        # root has no parent
+        if not item:
+            return dv.NullDataViewItem
+
+        node = self.ItemToObject(item)
+        parent = dv.NullDataViewItem
+
+        if isinstance(node, InfoContainer):
+            parent = self.ObjectToItem(node.Parent)
+        elif isinstance(node, TableContainer):
+            parent = self.ObjectToItem(node.Parent.Parent)
+        elif isinstance(node, RomTable):
+            rom = node.Parent
+            category = node.Definition.Category
+            parent = self.ObjectToItem(rom.Tables[category])
+        elif isinstance(node, str):
+            for rom in self._roms:
+                if node in ['{}: {}'.format(k, v) for k, v in rom.Info]:
+                    parent = rom.Info
+                    break
+
+        return parent
+
+    def HasValue(self, item, col):
+        if col > 0:
+            return False
+        return True
+
+    def GetValue(self, item, col):
+        assert col == 0, "Unexpected column for RomViewModel"
+
+        node = self.ItemToObject(item)
+
+        if isinstance(node, Rom):
+            return '{} ({})'.format(
+                os.path.basename(node.Path),
+                node.Path
+            )
+        elif isinstance(node, InfoContainer):
+            return 'Info'
+        elif isinstance(node, TableContainer):
+            return node.Name
+        elif isinstance(node, RomTable):
+            return node.Definition.Name
+        elif isinstance(node, str):
+            return node
+
+        return ''
+
+# TODO: update LoggerDef/viewmodel to use `Container` instead of tuples
 class TranslatorViewModel(dv.PyDataViewModel):
 
     def __init__(self, translator):

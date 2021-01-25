@@ -13,10 +13,26 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from collections import UserDict
 from datetime import datetime
 from json import JSONEncoder
 from queue import Queue
 from threading import Thread, Event
+
+class Container(UserDict):
+    """Dictionary that stores a pointer to its containing parent"""
+    def __init__(self, parent, data={}, name=''):
+        super(Container, self).__init__(data)
+        self._parent = parent
+        self._name = name
+
+    @property
+    def Parent(self):
+        return self._parent
+
+    @property
+    def Name(self):
+        return self._name
 
 class PyrrhicJSONSerializable(object):
     def to_json(self):

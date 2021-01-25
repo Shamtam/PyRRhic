@@ -34,10 +34,7 @@ class EditorFrame(bEditorFrame):
         # to avoid exception being thrown on close due to AUI manager deletion
         pass
 
-    def edit_table(self, data):
-        rom, cat_name = data[0][1]
-        tab_name = data[-1]
-        table = rom.Tables[cat_name][tab_name]
+    def edit_table(self, table):
 
         if table.Panel is not None:
             self.toggle_table(table.Panel)
@@ -77,8 +74,8 @@ class EditorFrame(bEditorFrame):
         pane.Show(not pane.IsShown())
         self.m_mgr.Update()
 
-    def refresh_tree(self):
-        self._tree_panel.update_model()
+    def refresh_tree(self, obj=None):
+        self._tree_panel.update_model(obj)
 
     def OnClose(self, event):
         self._controller.save_prefs()

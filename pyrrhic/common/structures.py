@@ -22,9 +22,10 @@ from math import prod
 from xml.etree.ElementTree import Element
 
 from .enums import (
-    ByteOrder, DataType, UserLevel,
+    ByteOrder, DataType, UserLevel, ByteOrder,
     _byte_order_struct_map, _dtype_struct_map, _dtype_size_map
 )
+from .utils import bound_int
 
 _logger = logging.getLogger()
 
@@ -298,13 +299,113 @@ class RomTable(object):
         self._axes = None
         self._panel = None
 
+        if self._definition.Datatype != DataType.STATIC:
+            addr = self._definition.Address
+            length = self._definition.NumBytes
+            self._orig_bytes = self._parent.OriginalBytes[addr:addr + length]
+            self._bytes = memoryview(self._parent.Bytes)[addr:addr + length]
+        else:
+            self._orig_bytes = None
+            self._bytes = None
+
         if self._definition.Axes:
             self._axes = []
             for ax in self._definition.Axes:
                 self._axes.append(RomTable(parent, ax))
 
-        self._changes = None
         self._current_scaling = self._definition.Scaling
+
+    def __repr__(self):
+        return '<RomTable {}/{}>'.format(
+            self._definition.Category, self._definition.Name
+        )
+
+    def check_val_modified(self, idx1, idx2=0):
+        """Returns a boolean indicating whether the value at the given
+        row/column has been modified."""
+        order = self._definition.ByteOrder
+        dtype = self._definition.Datatype
+
+        if dtype == DataType.STATIC:
+            return False
+
+        elem_size = _dtype_size_map[dtype]
+
+        # 3D table
+        if self._axes is not None and len(self._axes) == 2:
+            cols = self._axes[0].Definition.Length
+            idx = (idx1*cols + idx2)*elem_size
+        # 1D/2D table
+        else:
+            idx = max(idx1, idx2)*elem_size
+
+        return (
+            self._bytes[idx:idx + elem_size] !=
+            self._orig_bytes[idx:idx + elem_size]
+        )
+
+    def step(self, idx1, idx2=0, decrement=False):
+        "Increase/decrease the value at the supplied index by one step size"
+
+        order = self._definition.ByteOrder
+        dtype = self._definition.Datatype
+
+        if dtype in [DataType.BLOB, DataType.STATIC]:
+            return
+
+        # TODO: make step size dynamic and pull from definition
+        if dtype == DataType.FLOAT:
+            step = 1e-3
+        else:
+            step = 1
+
+        border_str = _byte_order_struct_map[order]
+        dtype_str = _dtype_struct_map[dtype]
+        unpack_str = border_str + dtype_str
+        elem_size = _dtype_size_map[dtype]
+
+        # 3D table
+        if self._axes is not None and len(self._axes) == 2:
+            cols = self._axes[0].Definition.Length
+            idx = (idx1*cols + idx2)*elem_size
+        # 1D/2D table
+        else:
+            idx = max(idx1, idx2)*elem_size
+
+        val = struct.unpack_from(unpack_str, self._bytes, idx)[0]
+        flip = -1 if decrement else 1
+        new_val = val + step*flip
+
+        if dtype != DataType.FLOAT:
+            new_val = bound_int(dtype, new_val)
+
+        self._bytes[idx:idx + elem_size] = struct.pack(unpack_str, new_val)
+
+    def add_raw(self, offs, idx1, idx2=0):
+        "Add `offs` to the value stored at the supplied index"
+
+        order = self._definition.ByteOrder
+        dtype = self._definition.Datatype
+
+        if dtype in [DataType.FLOAT, DataType.STATIC]:
+            return
+
+        border_str = _byte_order_struct_map[order]
+        dtype_str = _dtype_struct_map[dtype]
+        unpack_str = border_str + dtype_str
+        elem_size = _dtype_size_map[dtype]
+
+        # 3D table
+        if self._axes is not None and len(self._axes) == 2:
+            cols = self._axes[0].Definition.Length
+            idx = (idx1*cols + idx2)*elem_size
+        # 1D/2D table
+        else:
+            idx = max(idx1, idx2)*elem_size
+
+        val = struct.unpack_from(unpack_str, self.Bytes, idx)[0]
+        new_val = bound_int(dtype, val + offs)
+        self.Bytes[idx:idx + elem_size] = struct.pack(unpack_str, new_val)
 
     @property
     def Axes(self):
@@ -315,11 +416,14 @@ class RomTable(object):
         return self._definition
 
     @property
+    def OriginalBytes(self):
+        "Returns the unmodified raw byte data for this table"
+        return self._orig_bytes
+
+    @property
     def Bytes(self):
-        "Returns a `bytes` object of all the bytes for this table"
-        addr = self._definition.Address
-        length = self._definition.NumBytes
-        return self._parent.Bytes[addr:addr + length]
+        "Returns the raw byte data currently contained by this table"
+        return self._bytes
 
     @property
     def Values(self):
@@ -381,6 +485,19 @@ class RomTable(object):
     @Panel.setter
     def Panel(self, f):
         self._panel = f
+
+    @property
+    def Parent(self):
+        "Parent `Rom` object that contains this table"
+        return self._parent
+
+    @property
+    def IsModified(self):
+        modified = self._orig_bytes != self._bytes
+        if self._axes:
+            for ax in self._axes:
+                modified = modified or ax.IsModified
+        return modified
 
 class LogParam(object):
     "Base class for logger elements"

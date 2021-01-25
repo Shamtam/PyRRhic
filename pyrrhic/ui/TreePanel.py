@@ -15,15 +15,19 @@
 
 import wx
 
+from wx import dataview as dv
+
+from ..common.rom import Rom, InfoContainer, TableContainer
+from ..common.structures import RomTable
 from .panelsBase import bTreePanel
-from ..common.rom import Rom, PyrrhicRomViewModel
+from .ViewModels import RomViewModel
 
 class TreePanel(bTreePanel):
     def __init__(self, *args, **kwargs):
         super(TreePanel, self).__init__(*args, **kwargs)
 
     def initialize(self, rom_container):
-        self._model = PyrrhicRomViewModel(self.Parent.Controller)
+        self._model = RomViewModel(self.Parent.Controller)
         self._dvc.AssociateModel(self._model)
         self._model.DecRef()
 
@@ -38,23 +42,38 @@ class TreePanel(bTreePanel):
 
         self._dvc.SetRowHeight(row_height)
 
-    def update_model(self):
-        self._model.Cleared()
+    def update_model(self, obj):
+        if obj is None:
+            self._model.Cleared()
+
+        elif isinstance(obj, Rom):
+            item = self._model.ObjectToItem(obj)
+            self._model.ItemChanged(item)
+
+        elif isinstance(obj, RomTable):
+            rom = obj.Parent
+            category = rom.Tables[obj.Definition.Category]
+
+            items = [
+                self._model.ObjectToItem(obj),
+                self._model.ObjectToItem(category),
+                self._model.ObjectToItem(rom)
+            ]
+            dva = dv.DataViewItemArray()
+            for x in items: dva.append(x)
+            self._model.ItemsChanged(dva)
 
     def OnToggle(self, event):
         item = event.GetItem()
         node = self._model.ItemToObject(item)
 
-        if (
-            isinstance(node, Rom) or
-            (
-                isinstance(node, tuple) and
-                node[0] in ['infocontainer', 'category']
-            )
-        ):
+        if isinstance(node, (Rom, InfoContainer, TableContainer)):
             dvc = self._dvc
             dvc.Collapse(item) if dvc.IsExpanded(item) else dvc.Expand(item)
 
-        elif (isinstance(node, tuple) and node[0] == 'table'):
-            data = node[1]
-            self.Parent.edit_table(data)
+        elif isinstance(node, RomTable):
+            self.Parent.edit_table(node)
+
+    @property
+    def Model(self):
+        return self._model

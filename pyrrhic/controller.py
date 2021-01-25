@@ -98,7 +98,7 @@ class PyrrhicController(object):
 
         # load raw image bytes
         with open(fpath, 'rb') as fp:
-            rom_bytes = memoryview(fp.read())
+            rom_bytes = fp.read()
 
         # inspect bytes at all internal ID addresses specified in definitions
         try:
@@ -108,7 +108,7 @@ class PyrrhicController(object):
                 for nbytes in len_tree:
                     vals = len_tree[nbytes]
 
-                    id_bytes = rom_bytes[addr:addr + nbytes].tobytes()
+                    id_bytes = rom_bytes[addr:addr + nbytes]
                     if id_bytes in vals:
                         defn = vals[id_bytes]
                         raise DefinitionFound
@@ -126,6 +126,9 @@ class PyrrhicController(object):
             'Undefined ROM',
             'Unable to find matching definition for ROM'
         )
+
+    def refresh_table(self, table):
+        self._editor_frame.refresh_tree(obj=table)
 
 # Logger
     def refresh_interfaces(self):

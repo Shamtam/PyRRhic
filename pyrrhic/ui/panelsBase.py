@@ -123,11 +123,40 @@ class bTablePanel ( ScrolledWindow ):
         _sizer.SetFlexibleDirection( wx.BOTH )
         _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
 
+        self._toolbar = wx.ToolBar( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TB_HORIZONTAL )
+        self._t_inc = self._toolbar.AddTool( wx.ID_ANY, u"Increment", wx.ArtProvider.GetBitmap( wx.ART_PLUS, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Increment Selection", u"Increment Selection", None )
+
+        self._t_dec = self._toolbar.AddTool( wx.ID_ANY, u"Decrement", wx.ArtProvider.GetBitmap( wx.ART_MINUS, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Decrement Selection", u"Decrement Selection", None )
+
+        self._t_inc_raw = self._toolbar.AddTool( wx.ID_ANY, u"tool", wx.ArtProvider.GetBitmap( wx.ART_PLUS, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Increment Selection (Raw)", u"Increment Selection (Raw)", None )
+
+        self._t_dec_raw = self._toolbar.AddTool( wx.ID_ANY, u"tool", wx.ArtProvider.GetBitmap( wx.ART_MINUS, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Decrement Selection (Raw)", u"Decrement Selection (Raw)", None )
+
+        self._toolbar.AddSeparator()
+
+        self._t_set = self._toolbar.AddTool( wx.ID_ANY, u"Set Value", wx.ArtProvider.GetBitmap( wx.ART_EDIT, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Set Value", u"Set Value", None )
+
+        self._t_add = self._toolbar.AddTool( wx.ID_ANY, u"Add", wx.ArtProvider.GetBitmap( wx.ART_EDIT, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Add to Selection", u"Add to Selection", None )
+
+        self._t_mult = self._toolbar.AddTool( wx.ID_ANY, u"Multiply", wx.ArtProvider.GetBitmap( wx.ART_EDIT, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Multiply Selection", u"Multiply Selection", None )
+
+        self._toolbar.AddSeparator()
+
+        self._t_horiz_interp = self._toolbar.AddTool( wx.ID_ANY, u"Horizontal Interpolate", wx.ArtProvider.GetBitmap( wx.ART_EDIT, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Horizontally Interpolate Selection", u"Horizontally Interpolate Selection", None )
+
+        self._t_vert_interp = self._toolbar.AddTool( wx.ID_ANY, u"Vertical Interpolate", wx.ArtProvider.GetBitmap( wx.ART_EDIT, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Vertically Interpolate Selection", u"Vertically Interpolate Selection", None )
+
+        self._t_2d_interp = self._toolbar.AddTool( wx.ID_ANY, u"2D Interpolate", wx.ArtProvider.GetBitmap( wx.ART_EDIT, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"2D Interpolate Selection", u"2D Interpolate Selection", None )
+
+        self._toolbar.Realize()
+
+        _sizer.Add( self._toolbar, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 2 ), wx.EXPAND, 5 )
+
         self._x_grid = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
 
         # Grid
         self._x_grid.CreateGrid( 0, 0 )
-        self._x_grid.EnableEditing( True )
+        self._x_grid.EnableEditing( False )
         self._x_grid.EnableGridLines( True )
         self._x_grid.EnableDragGridSize( False )
         self._x_grid.SetMargins( 0, 0 )
@@ -150,13 +179,13 @@ class bTablePanel ( ScrolledWindow ):
         # Cell Defaults
         self._x_grid.SetDefaultCellFont( wx.Font( 8, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
         self._x_grid.SetDefaultCellAlignment( wx.ALIGN_CENTER, wx.ALIGN_CENTER )
-        _sizer.Add( self._x_grid, wx.GBPosition( 0, 1 ), wx.GBSpan( 1, 1 ), wx.ALIGN_BOTTOM|wx.ALIGN_LEFT|wx.LEFT, 5 )
+        _sizer.Add( self._x_grid, wx.GBPosition( 1, 1 ), wx.GBSpan( 1, 1 ), wx.ALIGN_BOTTOM|wx.ALIGN_LEFT|wx.LEFT, 5 )
 
         self._y_grid = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
 
         # Grid
         self._y_grid.CreateGrid( 0, 0 )
-        self._y_grid.EnableEditing( True )
+        self._y_grid.EnableEditing( False )
         self._y_grid.EnableGridLines( True )
         self._y_grid.EnableDragGridSize( False )
         self._y_grid.SetMargins( 0, 0 )
@@ -179,13 +208,13 @@ class bTablePanel ( ScrolledWindow ):
         # Cell Defaults
         self._y_grid.SetDefaultCellFont( wx.Font( 8, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
         self._y_grid.SetDefaultCellAlignment( wx.ALIGN_RIGHT, wx.ALIGN_CENTER )
-        _sizer.Add( self._y_grid, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 1 ), wx.ALIGN_RIGHT|wx.ALIGN_TOP|wx.TOP, 5 )
+        _sizer.Add( self._y_grid, wx.GBPosition( 2, 0 ), wx.GBSpan( 1, 1 ), wx.ALIGN_RIGHT|wx.ALIGN_TOP|wx.TOP, 5 )
 
         self._table_grid = wx.grid.Grid( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
 
         # Grid
         self._table_grid.CreateGrid( 0, 0 )
-        self._table_grid.EnableEditing( True )
+        self._table_grid.EnableEditing( False )
         self._table_grid.EnableGridLines( True )
         self._table_grid.EnableDragGridSize( False )
         self._table_grid.SetMargins( 0, 0 )
@@ -193,7 +222,7 @@ class bTablePanel ( ScrolledWindow ):
         # Columns
         self._table_grid.AutoSizeColumns()
         self._table_grid.EnableDragColMove( False )
-        self._table_grid.EnableDragColSize( True )
+        self._table_grid.EnableDragColSize( False )
         self._table_grid.SetColLabelSize( 0 )
         self._table_grid.SetColLabelAlignment( wx.ALIGN_CENTER, wx.ALIGN_CENTER )
 
@@ -208,11 +237,11 @@ class bTablePanel ( ScrolledWindow ):
         # Cell Defaults
         self._table_grid.SetDefaultCellFont( wx.Font( 8, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
         self._table_grid.SetDefaultCellAlignment( wx.ALIGN_RIGHT, wx.ALIGN_CENTER )
-        _sizer.Add( self._table_grid, wx.GBPosition( 1, 1 ), wx.GBSpan( 1, 1 ), wx.ALIGN_LEFT|wx.ALIGN_TOP|wx.ALL, 5 )
+        _sizer.Add( self._table_grid, wx.GBPosition( 2, 1 ), wx.GBSpan( 1, 1 ), wx.ALIGN_LEFT|wx.ALIGN_TOP|wx.ALL, 5 )
 
 
         _sizer.AddGrowableCol( 1 )
-        _sizer.AddGrowableRow( 1 )
+        _sizer.AddGrowableRow( 2 )
 
         self.SetSizer( _sizer )
         self.Layout()
@@ -220,6 +249,25 @@ class bTablePanel ( ScrolledWindow ):
 
         # Connect Events
         self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClose )
+        self.Bind( wx.EVT_TOOL, self.OnIncrement, id = self._t_inc.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnDecrement, id = self._t_dec.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnIncrementRaw, id = self._t_inc_raw.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnDecrementRaw, id = self._t_dec_raw.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnSetValue, id = self._t_set.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnAddToValue, id = self._t_add.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnMultiplyValue, id = self._t_mult.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnInterpolateH, id = self._t_horiz_interp.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnInterpolateV, id = self._t_vert_interp.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnInterpolate2D, id = self._t_2d_interp.GetId() )
+        self._x_grid.Bind( wx.grid.EVT_GRID_RANGE_SELECT, self.OnSelect )
+        self._x_grid.Bind( wx.grid.EVT_GRID_SELECT_CELL, self.OnSelect )
+        self._x_grid.Bind( wx.EVT_KEY_DOWN, self.OnKeyDown )
+        self._y_grid.Bind( wx.grid.EVT_GRID_RANGE_SELECT, self.OnSelect )
+        self._y_grid.Bind( wx.grid.EVT_GRID_SELECT_CELL, self.OnSelect )
+        self._y_grid.Bind( wx.EVT_KEY_DOWN, self.OnKeyDown )
+        self._table_grid.Bind( wx.grid.EVT_GRID_RANGE_SELECT, self.OnSelect )
+        self._table_grid.Bind( wx.grid.EVT_GRID_SELECT_CELL, self.OnSelect )
+        self._table_grid.Bind( wx.EVT_KEY_DOWN, self.OnKeyDown )
 
     def __del__( self ):
         pass
@@ -228,6 +276,49 @@ class bTablePanel ( ScrolledWindow ):
     # Virtual event handlers, overide them in your derived class
     def OnClose( self, event ):
         event.Skip()
+
+    def OnIncrement( self, event ):
+        event.Skip()
+
+    def OnDecrement( self, event ):
+        event.Skip()
+
+    def OnIncrementRaw( self, event ):
+        event.Skip()
+
+    def OnDecrementRaw( self, event ):
+        event.Skip()
+
+    def OnSetValue( self, event ):
+        event.Skip()
+
+    def OnAddToValue( self, event ):
+        event.Skip()
+
+    def OnMultiplyValue( self, event ):
+        event.Skip()
+
+    def OnInterpolateH( self, event ):
+        event.Skip()
+
+    def OnInterpolateV( self, event ):
+        event.Skip()
+
+    def OnInterpolate2D( self, event ):
+        event.Skip()
+
+    def OnSelect( self, event ):
+        event.Skip()
+
+
+    def OnKeyDown( self, event ):
+        event.Skip()
+
+
+
+
+
+
 
 
 ###########################################################################
