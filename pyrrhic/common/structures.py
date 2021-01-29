@@ -299,14 +299,7 @@ class RomTable(object):
         self._axes = None
         self._panel = None
 
-        if self._definition.Datatype != DataType.STATIC:
-            addr = self._definition.Address
-            length = self._definition.NumBytes
-            self._orig_bytes = self._parent.OriginalBytes[addr:addr + length]
-            self._bytes = memoryview(self._parent.Bytes)[addr:addr + length]
-        else:
-            self._orig_bytes = None
-            self._bytes = None
+        self.initialize_bytes()
 
         if self._definition.Axes:
             self._axes = []
@@ -319,6 +312,16 @@ class RomTable(object):
         return '<RomTable {}/{}>'.format(
             self._definition.Category, self._definition.Name
         )
+
+    def initialize_bytes(self):
+        if self._definition.Datatype != DataType.STATIC:
+            addr = self._definition.Address
+            length = self._definition.NumBytes
+            self._orig_bytes = self._parent.OriginalBytes[addr:addr + length]
+            self._bytes = memoryview(self._parent.Bytes)[addr:addr + length]
+        else:
+            self._orig_bytes = None
+            self._bytes = None
 
     def check_val_modified(self, idx1, idx2=0):
         """Returns a boolean indicating whether the value at the given

@@ -100,13 +100,27 @@ class bEditorFrame ( BaseFrame ):
 
         self._menubar = wx.MenuBar( 0 )
         self._m_file = wx.Menu()
-        self._mi_file_rom = wx.MenuItem( self._m_file, wx.ID_ANY, u"Open ROM..."+ u"\t" + u"CTRL+O", u"Open a binary ROM file", wx.ITEM_NORMAL )
-        self._mi_file_rom.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_FILE_OPEN, wx.ART_MENU ) )
-        self._m_file.Append( self._mi_file_rom )
+        self._mi_open = wx.MenuItem( self._m_file, wx.ID_ANY, u"Open ROM"+ u"\t" + u"CTRL+O", u"Open a binary ROM file", wx.ITEM_NORMAL )
+        self._mi_open.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_FILE_OPEN, wx.ART_MENU ) )
+        self._m_file.Append( self._mi_open )
+
+        self._mi_save = wx.MenuItem( self._m_file, wx.ID_ANY, u"Save ROM"+ u"\t" + u"CTRL+S", u"Save edited ROM file(s)", wx.ITEM_NORMAL )
+        self._mi_save.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_FILE_SAVE, wx.ART_MENU ) )
+        self._m_file.Append( self._mi_save )
+
+        self._mi_save_as = wx.MenuItem( self._m_file, wx.ID_ANY, u"Save ROM As"+ u"\t" + u"CTRL+SHIFT+S", u"Save edited ROM file(s) as", wx.ITEM_NORMAL )
+        self._mi_save_as.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_FILE_SAVE_AS, wx.ART_MENU ) )
+        self._m_file.Append( self._mi_save_as )
 
         self._mi_file_prefs = wx.MenuItem( self._m_file, wx.ID_ANY, u"Preferences"+ u"\t" + u"CTRL+P", u"Open Preferences", wx.ITEM_NORMAL )
         self._mi_file_prefs.SetBitmap( wx.NullBitmap )
         self._m_file.Append( self._mi_file_prefs )
+
+        self._m_file.AppendSeparator()
+
+        self._mi_exit = wx.MenuItem( self._m_file, wx.ID_ANY, u"Exit"+ u"\t" + u"ALT+F4", u"Exit", wx.ITEM_NORMAL )
+        self._mi_exit.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_QUIT, wx.ART_MENU ) )
+        self._m_file.Append( self._mi_exit )
 
         self._menubar.Append( self._m_file, u"File" )
 
@@ -125,12 +139,22 @@ class bEditorFrame ( BaseFrame ):
 
         self.SetMenuBar( self._menubar )
 
+        self._toolbar = wx.aui.AuiToolBar( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.aui.AUI_TB_HORZ_LAYOUT )
+        self._tb_open = self._toolbar.AddTool( wx.ID_ANY, u"Open ROM", wx.ArtProvider.GetBitmap( wx.ART_FILE_OPEN, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Open ROM", u"Open ROM", None )
+
+        self._tb_save = self._toolbar.AddTool( wx.ID_ANY, u"Save ROM", wx.ArtProvider.GetBitmap( wx.ART_FILE_SAVE, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Save ROM", u"Save ROM", None )
+
+        self._tb_save_as = self._toolbar.AddTool( wx.ID_ANY, u"Save ROM As", wx.ArtProvider.GetBitmap( wx.ART_FILE_SAVE_AS, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Save ROM As", u"Save ROM As", None )
+
+        self._toolbar.Realize()
+        self.m_mgr.AddPane( self._toolbar, wx.aui.AuiPaneInfo().Top().CaptionVisible( False ).CloseButton( False ).PaneBorder( False ).Movable( False ).Dock().Resizable().FloatingSize( wx.Size( -1,-1 ) ).DockFixed( True ).BottomDockable( False ).LeftDockable( False ).RightDockable( False ).Floatable( False ).Layer( 10 ) )
+
         self._status_bar = self.CreateStatusBar( 1, wx.STB_SIZEGRIP, wx.ID_ANY )
         self._tree_panel = TreePanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        self.m_mgr.AddPane( self._tree_panel, wx.aui.AuiPaneInfo() .Name( u"RomDataPane" ).Left() .Caption( u"ROM Data" ).CloseButton( False ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.DefaultSize ).BottomDockable( False ).TopDockable( False ).MinSize( wx.Size( 400,-1 ) ) )
+        self.m_mgr.AddPane( self._tree_panel, wx.aui.AuiPaneInfo() .Name( u"RomDataPane" ).Left() .Caption( u"ROM Data" ).CloseButton( False ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.DefaultSize ).BottomDockable( False ).TopDockable( False ).Row( 1 ).MinSize( wx.Size( 400,-1 ) ) )
 
         self._console_panel = ConsolePanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        self.m_mgr.AddPane( self._console_panel, wx.aui.AuiPaneInfo() .Name( u"ConsolePane" ).Center() .Caption( u"Console" ).CloseButton( False ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.Size( -1,-1 ) ).Row( 0 ).Position( 0 ).MinSize( wx.Size( 600,-1 ) ) )
+        self.m_mgr.AddPane( self._console_panel, wx.aui.AuiPaneInfo() .Name( u"ConsolePane" ).Center() .Caption( u"Console" ).CloseButton( False ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.Size( -1,-1 ) ).Row( 1 ).Position( 0 ).MinSize( wx.Size( 600,-1 ) ) )
 
 
         self.m_mgr.Update()
@@ -138,10 +162,16 @@ class bEditorFrame ( BaseFrame ):
 
         # Connect Events
         self.Bind( wx.EVT_CLOSE, self.OnClose )
-        self.Bind( wx.EVT_MENU, self.OnOpenRom, id = self._mi_file_rom.GetId() )
+        self.Bind( wx.EVT_MENU, self.OnOpenRom, id = self._mi_open.GetId() )
+        self.Bind( wx.EVT_MENU, self.OnSaveRom, id = self._mi_save.GetId() )
+        self.Bind( wx.EVT_MENU, self.OnSaveRomAs, id = self._mi_save_as.GetId() )
         self.Bind( wx.EVT_MENU, self.OnPreferences, id = self._mi_file_prefs.GetId() )
+        self.Bind( wx.EVT_MENU, self.OnClose, id = self._mi_exit.GetId() )
         self.Bind( wx.EVT_MENU, self.OnViewRomData, id = self._mi_view_romdata.GetId() )
         self.Bind( wx.EVT_MENU, self.OnViewLog, id = self._mi_view_log.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnOpenRom, id = self._tb_open.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnSaveRom, id = self._tb_save.GetId() )
+        self.Bind( wx.EVT_TOOL, self.OnSaveRomAs, id = self._tb_save_as.GetId() )
 
     def __del__( self ):
         self.m_mgr.UnInit()
@@ -155,14 +185,24 @@ class bEditorFrame ( BaseFrame ):
     def OnOpenRom( self, event ):
         event.Skip()
 
+    def OnSaveRom( self, event ):
+        event.Skip()
+
+    def OnSaveRomAs( self, event ):
+        event.Skip()
+
     def OnPreferences( self, event ):
         event.Skip()
+
 
     def OnViewRomData( self, event ):
         event.Skip()
 
     def OnViewLog( self, event ):
         event.Skip()
+
+
+
 
 
 ###########################################################################

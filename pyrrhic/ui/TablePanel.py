@@ -14,10 +14,10 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import wx
-from wx.core import MOD_CONTROL, WXK_NUMPAD_ADD
 
 from .panelsBase import bTablePanel
 from ..common.enums import DataType
+from ..common.structures import RomTable
 
 class TablePanel(bTablePanel):
     def __init__(self, parent, identifier, table, **kwargs):
@@ -129,6 +129,7 @@ class TablePanel(bTablePanel):
                 # set table value
                 self._set_value(self._table, self._table_grid, i, j)
 
+        self.Refresh()
         self._controller.refresh_table(self._table)
 
     def OnSelect(self, event):
@@ -248,6 +249,10 @@ class TablePanel(bTablePanel):
         if kc in _func_map:
             if mod in _func_map[kc]:
                 _func_map[kc][mod](event.GetEventObject().Parent)
+
+        # propagate key events for any non-handled keys
+        else:
+            event.Skip()
 
     @property
     def Identifier(self):

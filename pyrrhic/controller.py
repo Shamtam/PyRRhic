@@ -17,9 +17,6 @@ import json
 import logging
 import os
 
-import struct
-
-from collections import deque
 from queue import Empty
 
 from .common import _prefs_file
@@ -89,7 +86,9 @@ class PyrrhicController(object):
         "Load the given filepath as a ROM image"
 
         if fpath in self._roms:
-            # TODO: push status notification indicating ROM already loaded
+            self._editor_frame.push_status(
+                'ROM {} already opened'.format(os.path.basename(fpath))
+            )
             return
 
         defn = None
@@ -268,6 +267,10 @@ class PyrrhicController(object):
     @property
     def LoadedROMs(self):
         return self._roms
+
+    @property
+    def ModifiedROMs(self):
+        return {k: v for k, v in self._roms.items() if v.IsModified}
 
     @property
     def Preferences(self):

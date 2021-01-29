@@ -66,8 +66,11 @@ class Rom(object):
             self, {k:v for k, v in editor_def.DisplayInfo.items()}
         )
 
+        self._initialize_tables()
+
+    def _initialize_tables(self):
         tables = TableCategoryContainer(self)
-        for tab in editor_def.AllTables.values():
+        for tab in self._definition.EditorDef.AllTables.values():
 
             # only consider tables that are fully defined
             if not tab.FullyDefined:
@@ -86,8 +89,39 @@ class Rom(object):
                 continue
 
             tables[cat][name] = RomTable(self, tab)
-
         self._tables = tables
+
+    def save(self, fpath=None):
+        """Save the ROM image.
+
+        Specify an absolute filepath to save to with the `fpath`
+        keyword. If no path is specified, then the ROM will be saved to
+        the original path from when the ROM was opened.
+
+        This function assumes any absolute path passed in to `fpath` is
+        a valid and writable absolute path
+        """
+
+        out_path = fpath if fpath is not None else self._filepath
+
+        with open(out_path, 'wb') as fp:
+            fp.write(self._bytes)
+
+        # update static bytes
+        self._orig_bytes = bytes(self._bytes)
+
+        # propagate updated bytes to any modified tables and update
+        # any associated panels
+        for category in self._tables:
+            mod_tables = filter(
+                lambda x: x.IsModified, self._tables[category].values()
+            )
+            for table in mod_tables:
+                table.initialize_bytes()
+                if table.Panel:
+                    table.Panel.populate()
+
+        self._filepath = out_path
 
     @property
     def OriginalBytes(self):
