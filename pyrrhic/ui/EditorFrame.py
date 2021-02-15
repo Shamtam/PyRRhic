@@ -17,11 +17,12 @@ import logging
 import os
 import wx
 
+from pubsub import pub
 from wx import aui
 
+from ..common.enums import UserLevel
 from .base import bEditorFrame
 from .TablePanel import TablePanel
-from ..controller import PyrrhicController
 from .PrefsDialog import PrefsDialog
 
 _logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class EditorFrame(bEditorFrame):
     def __init__(self, parent, controller):
         super(EditorFrame, self).__init__(parent)
         self._controller = controller
-        self._tree_panel.initialize(self._controller.LoadedROMs)
+        self._tree_panel.initialize()
 
         # TODO: eliminate reuse of status stuff between different frames
         self._status_timer = wx.Timer(self)
@@ -40,6 +41,10 @@ class EditorFrame(bEditorFrame):
         self.Bind(
             wx.EVT_TIMER, self._pop_status, self._status_timer
         )
+
+        pub.subscribe(self._enable_livetune, 'editor.livetune.enable')
+        pub.subscribe(self.OnTogglePane, 'editor.toggle_panel')
+        pub.subscribe(self.refresh_tree, 'editor.table.rom.change')
 
         self._save_items = [
             self._mi_save, self._mi_save_as, self._tb_save, self._tb_save_as
@@ -52,10 +57,37 @@ class EditorFrame(bEditorFrame):
         # to avoid exception being thrown on close due to AUI manager deletion
         pass
 
-    def edit_table(self, table):
+    def _enable_livetune(self, livetune=None):
+        userlvl = self._controller.Preferences['UserLevel'].Value
+
+        enable = livetune is not None
+
+        # only allow livetune UI for superdev user level
+        if userlvl < UserLevel.Superdev:
+            enable = False
+
+        self._mi_view_livetune.Enable(enable)
+
+        if enable:
+            self._livetune_panel.initialize(livetune)
+
+        # uninitialize and hide livetune pane if it's already shown
+        else:
+            self._livetune_panel.initialize()
+            pane = self.m_mgr.GetPane(self._livetune_panel)
+            if pane.IsShown():
+                pane.Show(False)
+                self.m_mgr.Update()
+
+    def toggle_table(self, table):
 
         if table.Panel is not None:
-            self.toggle_table(table.Panel)
+            pane = self.m_mgr.GetPane(table.Panel)
+            pane.Show(not pane.IsShown())
+            self.m_mgr.Update()
+
+            # need to re-set max size every time pane is shown
+            table.Panel.Parent.SetMaxClientSize(table.Panel.GetMaxSize())
 
         else:
             pane_name = table.PanelTitle
@@ -87,14 +119,7 @@ class EditorFrame(bEditorFrame):
             p.Parent.SetClientSize(max_size)
             p.Parent.SetMaxClientSize(max_size)
 
-    def toggle_table(self, pane_id):
-        pane = self.m_mgr.GetPane(pane_id)
-        pane.Show(not pane.IsShown())
-        self.m_mgr.Update()
-
     def refresh_tree(self, obj=None):
-        self._tree_panel.update_model(obj)
-
         for item in self._save_items:
             enabled = bool(self._controller.ModifiedROMs)
             if isinstance(item, wx.MenuItem):
@@ -145,7 +170,7 @@ class EditorFrame(bEditorFrame):
                 # TODO: sanity check files here?
                 self._controller.open_rom(fpath)
 
-            self.refresh_tree()
+            pub.sendMessage('editor.table.rom.change')
 
     def OnSaveRom(self, event):
 
@@ -162,14 +187,15 @@ class EditorFrame(bEditorFrame):
 
     def OnSaveRomAs(self, event):
 
-        # TODO: show dialog allowing user to select
+        # TODO: show dialog allowing user to select which ROMs to save
 
         num_saved = 0
         for rom in self._controller.ModifiedROMs.values():
             start_path = os.path.dirname(rom.Path)
             start_fname = os.path.basename(rom.Path)
             with wx.FileDialog(
-                self, 'Save ROM {}'.format(start_fname),
+                self,
+                'Save ROM {}'.format(start_fname),
                 defaultDir=start_path,
                 defaultFile=start_fname,
                 wildcard=_rom_wildcard,
@@ -190,6 +216,42 @@ class EditorFrame(bEditorFrame):
         dlg.ShowModal()
         dlg.Destroy()
 
+    def OnTogglePane(self, event=None):
+
+        # determine which pane to toggle
+
+        # menu item was clicked
+        if event.GetEventType() == wx.wxEVT_MENU:
+            _id_map = {
+                self._mi_view_romdata.GetId(): self._tree_panel,
+                self._mi_view_console.GetId(): self._console_panel,
+                self._mi_view_livetune.GetId(): self._livetune_panel,
+            }
+            pane = self.m_mgr.GetPane(_id_map[event.GetId()])
+
+        # close button on pane itself was clicked
+        elif event.GetEventType() == aui.wxEVT_AUI_PANE_CLOSE:
+            pane = event.GetPane()
+
+        # shouldn't ever reach here... do nothing if so
+        else:
+            return
+
+        # toggle pane
+        pane.Show(not pane.IsShown())
+
+        # update menu item state
+        _menu_map = {
+            self._tree_panel: self._mi_view_romdata,
+            self._console_panel: self._mi_view_console,
+            self._livetune_panel: self._mi_view_livetune,
+        }
+        if pane.window in _menu_map:
+            _menu_map[pane.window].Check(pane.IsShown())
+
+        # commit changes to AUI manager
+        self.m_mgr.Update()
+
     @property
     def Controller(self):
         return self._controller
@@ -201,3 +263,7 @@ class EditorFrame(bEditorFrame):
     @property
     def ROMTreePane(self):
         return self._tree_panel
+
+    @property
+    def LiveTunePane(self):
+        return self._livetune_panel

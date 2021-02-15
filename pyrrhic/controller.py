@@ -17,6 +17,8 @@ import json
 import logging
 import os
 
+from pubsub import pub
+
 from queue import Empty
 
 from .common import _prefs_file
@@ -58,6 +60,10 @@ class PyrrhicController(object):
             ecuflashRoot=self._prefs['ECUFlashRepo'].Value,
             rrlogger_path=self._prefs['RRLoggerDef'].Value
         )
+
+        pub.subscribe(self.live_tune_pull, 'livetune.state.pull.init')
+        pub.subscribe(self.live_tune_push, 'livetune.state.push.init')
+        pub.subscribe(self.toggle_table, 'editor.table.toggle')
 
         self.refresh_interfaces()
 
@@ -101,8 +107,8 @@ class PyrrhicController(object):
 
         # inspect bytes at all internal ID addresses specified in definitions
         try:
-            for addr in self._defmgr.ECUFlashSearchTree:
-                len_tree = self._defmgr.ECUFlashSearchTree[addr]
+            for addr in self._defmgr.ECUFlashEditorSearchTree:
+                len_tree = self._defmgr.ECUFlashEditorSearchTree[addr]
 
                 for nbytes in len_tree:
                     vals = len_tree[nbytes]
@@ -126,8 +132,8 @@ class PyrrhicController(object):
             'Unable to find matching definition for ROM'
         )
 
-    def refresh_table(self, table):
-        self._editor_frame.refresh_tree(obj=table)
+    def toggle_table(self, table):
+        self.EditorFrame.toggle_table(table)
 
 # Logger
     def refresh_interfaces(self):
@@ -177,20 +183,21 @@ class PyrrhicController(object):
 
             _logger.info('Logger disconnected')
             self._comms_worker = None
-            self._logger_frame.on_connection(connected=False)
 
-            # remove all parameters from UI
-            self.LoggerFrame.update_gauges([])
-            if self._comms_translator:
-                for p in (
-                    self._comms_translator.EnabledParams
-                    + self._comms_translator.EnabledSwitches
-                ):
-                    p.disable()
+        self._logger_frame.on_connection(connected=False)
 
-            self._comms_translator = None
+        # remove all parameters from UI
+        pub.sendMessage('logger.query.updated', params=[])
+        if self._comms_translator:
+            for p in (
+                self._comms_translator.EnabledParams
+                + self._comms_translator.EnabledSwitches
+            ):
+                p.disable()
 
-    def check_logger(self):
+        self._comms_translator = None
+
+    def check_comms(self):
         "Idle event handler that checks logging thread for updates."
         if self._comms_worker is not None:
             try:
@@ -204,19 +211,49 @@ class PyrrhicController(object):
                 data = item.Data
                 if msg == 'Init':
                     self._logger_init(data)
-                elif msg == 'QueryResponse':
+                elif msg == 'LogQueryResponse':
 
                     try:
                         self._comms_translator.extract_values(data)
                     except TranslatorParseError as e:
-                        self._logger_frame.push_status(
+                        pub.sendMessage('logger.status',
                             center=e.message, temporary=True
                         )
+                        return
 
-                    self._logger_frame.update_freq(
-                        self._comms_translator.AverageFreq
+                    pub.sendMessage('logger.freq.updated',
+                        avg_freq=self._comms_translator.AverageFreq
                     )
-                    self._logger_frame.refresh_gauges()
+                    pub.sendMessage('logger.params.updated')
+
+                elif msg == 'LiveTuneResponse':
+
+                    try:
+                        self._comms_translator.extract_livetune_state(data)
+
+                    except TranslatorParseError as e:
+                        _logger.warning(e.message)
+
+                    else:
+                        req = self._comms_translator.generate_livetune_query()
+
+                        # send next (or blank) query to worker
+                        self._comms_worker.InQueue.put(
+                            PyrrhicMessage('LiveTuneQuery', req)
+                        )
+
+                        if not req:
+                            pub.sendMessage('livetune.state.pull.complete')
+
+                elif msg == 'LiveTuneVerify':
+                    self._comms_translator.validate_livetune_write()
+                    req = self._comms_translator.generate_livetune_write()
+                    self._comms_worker.InQueue.put(
+                        PyrrhicMessage('LiveTuneWrite', req)
+                    )
+
+                    if not req:
+                        pub.sendMessage('livetune.state.push.complete')
 
                 elif msg == 'Exception':
                     raise data
@@ -225,15 +262,40 @@ class PyrrhicController(object):
         if self._comms_worker is not None:
 
             # get new request and push it to worker thread
-            req = self._comms_translator.generate_request()
+            req = self._comms_translator.generate_log_request()
             self._comms_worker.InQueue.put(
-                PyrrhicMessage('UpdateQuery', req)
+                PyrrhicMessage('LogQuery', req)
             )
 
             # send enabled parameters to logger frame for gauge updates
             params = self._comms_translator.EnabledParams
             switches = self._comms_translator.EnabledSwitches
-            self.LoggerFrame.update_gauges(params + switches)
+            pub.sendMessage('logger.query.updated', params=(params + switches))
+
+    def live_tune_pull(self):
+        if self._comms_worker is not None:
+
+            req = self._comms_translator.generate_livetune_query()
+            if req:
+                self._comms_worker.InQueue.put(
+                    PyrrhicMessage('LiveTuneQuery', req)
+                )
+                pub.sendMessage('livetune.state.pending')
+
+    def live_tune_push(self):
+        if self._comms_worker is not None:
+
+            req = self._comms_translator.generate_livetune_write()
+            if req:
+                self._comms_worker.InQueue.put(
+                    PyrrhicMessage('LiveTuneWrite', req)
+                )
+                pub.sendMessage('livetune.state.pending')
+
+    def sync_live_tune(self):
+        if self._comms_worker is not None:
+
+            self._comms_translator.generate_livetune
 
     def _logger_init(self, init_data):
         """
@@ -246,22 +308,65 @@ class PyrrhicController(object):
         _logger.debug('Identifier: {}'.format(identifier))
         _logger.debug('Raw Bytes: {}'.format(capabilities.hex()))
 
-        d = self._defmgr.RRLoggerDefs[protocol].get(identifier, None)
-        if d is not None:
-            d.resolve_dependencies(self._defmgr.RRLoggerDefs[protocol])
-            d.resolve_valid_params(capabilities)
+        defs = self._defmgr.Definitions[protocol].get(identifier, None)
+        if defs is not None:
+
+            # for logger init, CALID unimportant, so just pick first definition
+            definition = next(iter(defs.values()))
+            logger_def = definition.LoggerDef
+            logger_def.resolve_dependencies(self._defmgr.RRLoggerDefs[protocol])
+            logger_def.resolve_valid_params(capabilities)
             _logger.info(
                 'Connected to {}: {}'.format(endpoint.name, identifier)
             )
 
-            self._comms_translator.Definition = d
+            self._comms_translator.Definition = definition
             self._logger_frame.on_connection(translator=self._comms_translator)
+
+            # check if a ROM corresponding to the initialized ECU has been loaded
+            if self._roms:
+                loaded_roms = set([
+                    x.Definition.EditorID for x in self._roms.values()
+                ])
+                compatible_roms = set(defs.keys())
+                matching_roms = loaded_roms.intersection(compatible_roms)
+
+                # for any matching loaded roms, if the definition for this
+                # loaded ROM is a ROMDefinition only containing editor defs
+                for editor_id in matching_roms:
+                    roms = filter(
+                        lambda x: (
+                            x.Definition.EditorID == editor_id
+                            and x.Definition.LoggerDef is None
+                        ),
+                        self._roms.values()
+                    )
+                    for rom in roms:
+                        rom.Definition = defs[editor_id]
+
+                rom = None
+
+                if len(matching_roms) == 1:
+                    editor_id = next(iter(matching_roms))
+                    rom = next(filter(
+                        lambda x: x.Definition.EditorID == editor_id,
+                        self._roms.values()
+                    ))
+                    self._comms_translator.initialize_livetune(rom)
+
+                    if self._comms_translator.SupportsLiveTune:
+                        pub.sendMessage(
+                            'editor.livetune.enable',
+                            livetune=self._comms_translator.LiveTuneData
+                        )
+
         else:
             _logger.info(
                 'Unable to find logger definition for endpoint {}'.format(
                     identifier
                 )
             )
+            self.kill_logger()
 
 # Properties
     @property

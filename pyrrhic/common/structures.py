@@ -292,36 +292,11 @@ class TableDef(object):
     def ByteOrder(self):
         return self._byte_order
 
-class RomTable(object):
-    def __init__(self, parent, tabledef):
+class EditorTable(object):
+    """Base class for table definition/bytes to UI translation objects"""
+    def __init__(self, parent):
         self._parent = parent
-        self._definition = tabledef
-        self._axes = None
         self._panel = None
-
-        self.initialize_bytes()
-
-        if self._definition.Axes:
-            self._axes = []
-            for ax in self._definition.Axes:
-                self._axes.append(RomTable(parent, ax))
-
-        self._current_scaling = self._definition.Scaling
-
-    def __repr__(self):
-        return '<RomTable {}/{}>'.format(
-            self._definition.Category, self._definition.Name
-        )
-
-    def initialize_bytes(self):
-        if self._definition.Datatype != DataType.STATIC:
-            addr = self._definition.Address
-            length = self._definition.NumBytes
-            self._orig_bytes = self._parent.OriginalBytes[addr:addr + length]
-            self._bytes = memoryview(self._parent.Bytes)[addr:addr + length]
-        else:
-            self._orig_bytes = None
-            self._bytes = None
 
     def check_val_modified(self, idx1, idx2=0):
         """Returns a boolean indicating whether the value at the given
@@ -430,6 +405,39 @@ class RomTable(object):
 
     @property
     def Values(self):
+        raise NotImplementedError
+
+    @property
+    def DisplayValues(self):
+        raise NotImplementedError
+
+    @property
+    def PanelTitle(self):
+        raise NotImplementedError
+
+    @property
+    def Panel(self):
+        return self._panel
+
+    @Panel.setter
+    def Panel(self, f):
+        self._panel = f
+
+    @property
+    def Parent(self):
+        "Parent `Rom` object that contains this table"
+        return self._parent
+
+    @property
+    def IsModified(self):
+        raise NotImplementedError
+
+    @property
+    def NumBytes(self):
+        return len(self._orig_bytes)
+
+    @property
+    def Values(self):
         "Returns a numpy array of the raw values of this table"
         border = self._definition.ByteOrder
         dtype = self._definition.Datatype
@@ -474,6 +482,36 @@ class RomTable(object):
         else:
             return self.Values
 
+class RomTable(EditorTable):
+    def __init__(self, parent, tabledef):
+        super(RomTable, self).__init__(parent)
+        self._definition = tabledef
+        self._axes = []
+        self._panel = None
+
+        self.initialize_bytes()
+
+        if self._definition.Axes:
+            for ax in self._definition.Axes:
+                self._axes.append(RomTable(parent, ax))
+
+        self._current_scaling = self._definition.Scaling
+
+    def __repr__(self):
+        return '<RomTable {}/{}>'.format(
+            self._definition.Category, self._definition.Name
+        )
+
+    def initialize_bytes(self):
+        if self._definition.Datatype != DataType.STATIC:
+            addr = self._definition.Address
+            length = self._definition.NumBytes
+            self._orig_bytes = self._parent.OriginalBytes[addr:addr + length]
+            self._bytes = memoryview(self._parent.Bytes)[addr:addr + length]
+        else:
+            self._orig_bytes = None
+            self._bytes = None
+
     @property
     def PanelTitle(self):
         return '{} ({})'.format(
@@ -482,25 +520,104 @@ class RomTable(object):
         )
 
     @property
-    def Panel(self):
-        return self._panel
-
-    @Panel.setter
-    def Panel(self, f):
-        self._panel = f
-
-    @property
-    def Parent(self):
-        "Parent `Rom` object that contains this table"
-        return self._parent
-
-    @property
     def IsModified(self):
         modified = self._orig_bytes != self._bytes
         if self._axes:
             for ax in self._axes:
                 modified = modified or ax.IsModified
         return modified
+
+class RamTable(EditorTable):
+    def __init__(self, parent, rom_table, raw_bytes=None):
+        super(RamTable, self).__init__(parent)
+        self._rom_table = rom_table
+        self._definition = rom_table.Definition
+        self._axes = rom_table.Axes
+        self._ram_addr = None
+
+        self._active = False
+
+        # initialize table data by setting original bytes and mutable
+        # bytes to something different (arbitrary). this forces the
+        # table to be marked as modified, which will indicate that the
+        # table data needs to be populated by reading its current state
+        # from RAM upon livetune initialization
+        self.initialize_bytes(
+            orig_bytes=b'\x00'*self._rom_table.Definition.NumBytes,
+            current_bytes=b'\xFF'*self._rom_table.Definition.NumBytes
+        )
+
+    def __repr__(self):
+        final_str = '['
+
+        final_str += (
+            '{:x}'.format(self.RomAddress)
+            if self.RomAddress is not None
+            else '???'
+        )
+
+        final_str += ' -> '
+
+        final_str += (
+            '{:x}'.format(self.RamAddress)
+            if self.RamAddress is not None
+            else '???'
+        )
+
+        final_str += ']'
+
+        return '<RamTable {}/{} {}>'.format(
+            self._definition.Category, self._definition.Name, final_str
+        )
+
+    def initialize_bytes(self, orig_bytes=None, current_bytes=None):
+        self._orig_bytes = (
+            orig_bytes
+            if (
+                isinstance(orig_bytes, bytes)
+                and len(orig_bytes) == self._rom_table.Definition.NumBytes
+            )
+            else self._rom_table.OriginalBytes
+        )
+
+        self._bytes = bytearray(
+            current_bytes
+            if (
+                isinstance(current_bytes, bytes)
+                and len(current_bytes) == self._rom_table.Definition.NumBytes
+            )
+            else self._orig_bytes
+        )
+
+    def activate(self, activate=True):
+        self._active = activate
+
+    @property
+    def RomAddress(self):
+        return self._rom_table.Definition.Address
+
+    @property
+    def RamAddress(self):
+        return self._ram_addr
+
+    @RamAddress.setter
+    def RamAddress(self, addr):
+        self._ram_addr = addr
+
+    @property
+    def PanelTitle(self):
+        return '[LIVE:0x{:x}] {}'.format(
+            self._ram_addr,
+            self._definition.Name
+        )
+
+    @property
+    def IsModified(self):
+        return self._orig_bytes != self._bytes
+
+    @property
+    def Active(self):
+        return self._active
 
 class LogParam(object):
     "Base class for logger elements"

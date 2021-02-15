@@ -16,13 +16,14 @@
 import os
 import wx
 
+from natsort import natsort_key, ns
+from pubsub import pub
+from wx import dataview as dv
+
 from ..common.enums import UserLevel
 from ..common.helpers import Container
 from ..common.rom import Rom, InfoContainer, TableContainer
-from ..common.structures import RomTable
-
-from natsort import natsort_key, ns
-from wx import dataview as dv
+from ..common.structures import RomTable, RamTable
 
 # class ViewNode(object):
 #     """Dummy class to facilitate persistent objects for mapping simple
@@ -192,7 +193,7 @@ class RomViewModel(dv.PyDataViewModel):
             return True
 
         # mark modified tables bold
-        elif isinstance(node, RomTable):
+        elif isinstance(node, RamTable):
             attr.SetBold(node.IsModified)
             return True
 
@@ -235,7 +236,7 @@ class RomViewModel(dv.PyDataViewModel):
             n2 = natsort_key(node2.Name)
 
         # sort tables alphabetically
-        elif all(isinstance(x, RomTable) for x in nodes):
+        elif all(isinstance(x, RamTable) for x in nodes):
             n1 = natsort_key(node1.Definition.Name)
             n2 = natsort_key(node2.Definition.Name)
 
@@ -262,7 +263,7 @@ class RomViewModel(dv.PyDataViewModel):
             parent = self.ObjectToItem(node.Parent)
         elif isinstance(node, TableContainer):
             parent = self.ObjectToItem(node.Parent.Parent)
-        elif isinstance(node, RomTable):
+        elif isinstance(node, RamTable):
             rom = node.Parent
             category = node.Definition.Category
             parent = self.ObjectToItem(rom.Tables[category])
@@ -275,9 +276,7 @@ class RomViewModel(dv.PyDataViewModel):
         return parent
 
     def HasValue(self, item, col):
-        if col > 0:
-            return False
-        return True
+        return col == 0
 
     def GetValue(self, item, col):
         assert col == 0, "Unexpected column for RomViewModel"
@@ -298,7 +297,223 @@ class RomViewModel(dv.PyDataViewModel):
         elif isinstance(node, str):
             return node
 
+        return repr(node)
+
+class RamViewModel(dv.PyDataViewModel):
+
+    def __init__(self, controller, livetune):
+        super(RamViewModel, self).__init__()
+        self._controller = controller
+        self._livetune = livetune
+        self._rom = self._livetune.ROM
+
+        self._allocatable = (lambda x:
+            self._livetune.PendingSize + x.NumBytes
+            <= self._livetune.TotalSize
+        )
+
+    def GetColumnCount(self):
+        return 3
+
+    def GetColumnType(self, col):
+        _col_map = {
+            0: 'bool',      # allocation togglebox
+            0: 'bool',      # activation togglebox
+            1: 'string',    # name
+        }
+        return _col_map[col]
+
+    def GetChildren(self, item, children):
+
+        if not self._rom:
+            return 0
+
+        usrlvl = UserLevel(self._controller.Preferences['UserLevel'].Value)
+
+        # root node, add table categories
+        if not item:
+
+            categories = []
+            for category in self._rom.RAMTables:
+                container = self._rom.RAMTables[category]
+                tables = container.values()
+
+                # only append category if some of its tables fall within
+                # the currently selected user level
+                if not all(
+                    [usrlvl.value < x.Definition.Level.value  for x in tables]
+                ):
+                    categories.append(self.ObjectToItem(container))
+            for x in categories: children.append(x)
+
+            return len(categories)
+
+        node = self.ItemToObject(item)
+
+        # category node
+        if isinstance(node, TableContainer):
+            for tab in node.values():
+                children.append(self.ObjectToItem(tab))
+            return len(node)
+
+        return 0
+
+    def GetAttr(self, item, col, attr):
+        if not item:
+            return False
+
+        if col == 2:
+            node = self.ItemToObject(item)
+
+            col_db = wx.ColourDatabase()
+
+            if isinstance(node, TableContainer):
+                allocatable = any([self._allocatable(x) for x in node.values()])
+                allocated = any([x.RamAddress is not None for x in node.values()])
+                modified = any([
+                    x.RamAddress is not None and x.IsModified
+                    for x in node.values()
+                ])
+                attr.SetItalic(not allocatable)
+                attr.SetColour(
+                    col_db.Find('BLACK')
+                    if allocated
+                    else col_db.Find('GREY')
+                )
+                attr.SetBold(modified)
+
+            if isinstance(node, RamTable):
+                allocatable = self._allocatable(node)
+                allocated = node.RamAddress is not None
+                pending_allocation = (
+                    node.RomAddress in self._livetune.PendingAllocations
+                )
+                attr.SetItalic(
+                    not allocatable and not (pending_allocation or allocated)
+                )
+                attr.SetColour(
+                    col_db.Find('GREEN')
+                    if node.Active
+                    else col_db.Find('BLACK')
+                    if allocated
+                    else col_db.Find('GREY')
+                )
+                attr.SetBold(node.RamAddress is not None and node.IsModified)
+
+        return False
+
+    def IsContainer(self, item):
+
+        # root is a container
+        if not item:
+            return True
+
+        node = self.ItemToObject(item)
+
+        return (
+            True if isinstance(node, TableContainer)
+            else False
+        )
+
+    def HasDefaultCompare(self):
+        return True
+
+    def Compare(self, item1, item2, column, ascending):
+        node1 = self.ItemToObject(item1)
+        node2 = self.ItemToObject(item2)
+        nodes = [node1, node2]
+
+        # sort categories alphabetically
+        if all(isinstance(x, TableContainer) for x in nodes):
+            n1 = natsort_key(node1.Name)
+            n2 = natsort_key(node2.Name)
+
+        # sort tables alphabetically
+        elif all(isinstance(x, RamTable) for x in nodes):
+            n1 = natsort_key(node1.Definition.Name)
+            n2 = natsort_key(node2.Definition.Name)
+
+        else:
+            return 0
+
+        return 1 if ascending == (n1 > n2) else -1
+
+    def GetParent(self, item):
+
+        # root has no parent
+        if not item:
+            return dv.NullDataViewItem
+
+        node = self.ItemToObject(item)
+
+        if isinstance(node, TableContainer):
+            return dv.NullDataViewItem
+        elif isinstance(node, RamTable):
+            category = node.Definition.Category
+            return self.ObjectToItem(self._rom.RAMTables[category])
+
+    def HasValue(self, item, col):
+        return col < 3
+
+    def GetValue(self, item, col):
+        assert col < 3, "Unexpected column for RamViewModel"
+
+        node = self.ItemToObject(item)
+
+        if isinstance(node, TableContainer):
+            return node.Name if col == 2 else -1
+
+        elif isinstance(node, RamTable):
+
+            if col == 0:
+                return 1 if (
+                    (
+                        node.RamAddress is not None and
+                        node.RomAddress not in self._livetune.PendingAllocations
+                    )
+                    or
+                    (
+                        node.RamAddress is None and
+                        node.RomAddress in self._livetune.PendingAllocations
+                    )
+                ) else 0
+
+            elif col == 1:
+                return 1 if (
+                    (
+                        node.Active and
+                        node.RomAddress not in self._livetune.PendingActivations
+                    )
+                    or
+                    (
+                        not node.Active and
+                        node.RomAddress in self._livetune.PendingActivations
+                    )
+                ) else 0
+
+            elif col == 2:
+                return '[{}] {}'.format(node.NumBytes, node.Definition.Name)
+
         return ''
+
+    def SetValue(self, value, item, col):
+        if col in [0, 1]:
+            node = self.ItemToObject(item)
+
+            if isinstance(node, RamTable):
+
+                if col == 0:
+                    self._livetune.stage_allocation(node)
+
+                elif col == 1:
+                    self._livetune.stage_activation(node)
+
+                else:
+                    return
+
+                pub.sendMessage('editor.table.ram.change')
+
+        return True
 
 # TODO: update LoggerDef/viewmodel to use `Container` instead of tuples
 class TranslatorViewModel(dv.PyDataViewModel):
@@ -319,7 +534,7 @@ class TranslatorViewModel(dv.PyDataViewModel):
         return _col_map[col]
 
     def GetChildren(self, item, children):
-        d = self._translator.Definition
+        d = self._translator.Definition.LoggerDef
         if d is None:
             return 0
 

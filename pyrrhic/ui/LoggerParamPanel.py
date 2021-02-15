@@ -39,10 +39,9 @@ class LoggerParamPanel(bLoggerParamPanel):
         dc = wx.ScreenDC()
         dc.SetFont(font)
 
-        # get minimal row size for the current font size
-        row_height = dc.GetTextExtent('test')[1]
+        # get minimal row/col sizes for the current font size
+        id_width, row_height = dc.GetTextExtent('X1234')
         box_width = _toggle_rend.Size
-        id_width = dc.GetTextExtent('X1234')[0]
         del dc
 
         self._dvc.SetRowHeight(max(box_width, row_height))

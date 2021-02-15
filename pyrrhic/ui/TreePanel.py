@@ -15,6 +15,7 @@
 
 import wx
 
+from pubsub import pub
 from wx import dataview as dv
 
 from ..common.rom import Rom, InfoContainer, TableContainer
@@ -26,7 +27,9 @@ class TreePanel(bTreePanel):
     def __init__(self, *args, **kwargs):
         super(TreePanel, self).__init__(*args, **kwargs)
 
-    def initialize(self, rom_container):
+        pub.subscribe(self.update_model, 'editor.table.rom.change')
+
+    def initialize(self):
         self._model = RomViewModel(self.Parent.Controller)
         self._dvc.AssociateModel(self._model)
         self._model.DecRef()
@@ -42,7 +45,7 @@ class TreePanel(bTreePanel):
 
         self._dvc.SetRowHeight(row_height)
 
-    def update_model(self, obj):
+    def update_model(self, obj=None):
         if obj is None:
             self._model.Cleared()
 

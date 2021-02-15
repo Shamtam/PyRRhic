@@ -15,6 +15,8 @@
 
 import wx
 
+from pubsub import pub
+
 from wx.aui import AUI_BUTTON_STATE_NORMAL, AUI_BUTTON_STATE_DISABLED
 
 from .base import bLoggerFrame
@@ -46,6 +48,9 @@ class LoggerFrame(bLoggerFrame):
             wx.EVT_TIMER, self._pop_right_status, self._right_status_timer
         )
 
+        pub.subscribe(self.push_status, 'logger.status')
+        pub.subscribe(self.update_freq, 'logger.freq.updated')
+
         self.OnRefreshInterfaces()
 
     def _enable_toolbar_controls(self, enable=True, connect=False):
@@ -74,12 +79,6 @@ class LoggerFrame(bLoggerFrame):
     def _pop_right_status(self, event=None):
         self._statusbar.PopStatusText(field=2)
 
-    def refresh_gauges(self):
-        self._gauge_panel.refresh_gauges()
-
-    def update_gauges(self, params):
-        self._gauge_panel.update_gauges(params)
-
     def on_connection(self, connected=True, translator=None):
         text = self._disconnect_text if connected else self._connect_text
         self._connect_but.SetLabelText(text)
@@ -88,7 +87,7 @@ class LoggerFrame(bLoggerFrame):
 
         if connected:
             self._param_panel.initialize(translator)
-            self.push_status(left='ID: {}'.format(translator.Definition.Identifier))
+            self.push_status(left='ID: {}'.format(translator.Definition.LoggerDef.Identifier))
             self.push_status(left='Connected', temporary=True)
         else:
             self._param_panel.clear()
@@ -178,5 +177,5 @@ class LoggerFrame(bLoggerFrame):
             self._controller.kill_logger()
 
     def OnIdle(self, event):
-        self._controller.check_logger()
+        self._controller.check_comms()
         event.RequestMore() # ensure UI updates continuously

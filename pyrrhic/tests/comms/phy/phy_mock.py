@@ -87,6 +87,10 @@ class MockDevice(CommunicationDevice):
             self.clear_rx_buffer()
             self._worker = None
 
+    def queue_response(self, bytes):
+        "Push a particular response given by `bytes` to the read queue"
+        self._read_q.put_nowait(bytes)
+
     @property
     def Initialized(self):
         return True

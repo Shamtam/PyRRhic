@@ -14,7 +14,9 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import wx
+
 from logging import getLogger, CRITICAL, ERROR, WARNING, INFO, DEBUG
+from pubsub import pub
 
 from ..common.logging import _console_formatter, _lvl_map
 from .panelsBase import bConsolePanel

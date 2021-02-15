@@ -25,6 +25,16 @@ from .enums import (
     DataType, LoggerEndpoint, LoggerProtocol, UserLevel,
     _dtype_size_map, _ecuflash_to_dtype_map, _rrlogger_to_dtype_map
 )
+from .helpers import Container
+
+class DefinitionContainer(Container):
+    pass
+class ECUFlashContainer(Container):
+    pass
+class ECUFlashSearchTree(Container):
+    pass
+class RRLoggerContainer(Container):
+    pass
 
 _logger = logging.getLogger(__name__)
 
@@ -32,9 +42,11 @@ class DefinitionManager(object):
     """Overall container for definitions"""
 
     def __init__(self, ecuflashRoot=None, rrlogger_path=None):
-        self._ecuflash_defs = {}
-        self._ecuflash_search_tree = {}
-        self._rrlogger_defs = {}
+        self._defs = DefinitionContainer(self, name='Definitions')
+        self._ecuflash_defs = ECUFlashContainer(self, name='ECUFlash Definitions')
+        self._ecuflash_editor_tree = ECUFlashSearchTree(self)
+        self._ecuflash_logger_tree = ECUFlashSearchTree(self)
+        self._rrlogger_defs = RRLoggerContainer(self, name='RR Logger Definitions')
 
         if ecuflashRoot and os.path.isdir(ecuflashRoot):
             self.load_ecuflash_repository(ecuflashRoot)
@@ -42,13 +54,41 @@ class DefinitionManager(object):
         if rrlogger_path and os.path.isfile(rrlogger_path):
             self.load_rrlogger_file(rrlogger_path)
 
-        # initialize base logger definitions on initialization
+        # initialize base logger definitions on initialization and
+        # generate combined definition structure
         for protocol in self._rrlogger_defs:
             protocol_dict = self._rrlogger_defs[protocol]
             if 'Base' in protocol_dict:
                 protocol_dict['Base'].resolve_dependencies(
                     protocol_dict
                 )
+
+            # find all matching editor/logger definitions and combine them
+            # them into ROMDefinitions
+            for logger_id in protocol_dict:
+
+                if protocol not in self._defs:
+                    self._defs[protocol] = DefinitionContainer(
+                        self._defs, name=protocol.name
+                    )
+
+                protocol_def_dict = self._defs[protocol]
+
+                if logger_id in self._ecuflash_logger_tree:
+                    ecuflash_defs = self._ecuflash_logger_tree[logger_id]
+
+                    if logger_id not in protocol_def_dict:
+                        protocol_def_dict[logger_id] = DefinitionContainer(
+                            protocol_def_dict, name=logger_id
+                        )
+
+                    for editor_id in ecuflash_defs:
+                        ecuflash_def = ecuflash_defs[editor_id]
+                        rrlogger_def = protocol_dict[logger_id]
+
+                        protocol_def_dict[logger_id][editor_id] = ROMDefinition(
+                            ecuflash_def, rrlogger_def
+                        )
 
     def load_ecuflash_repository(self, directory):
         """
@@ -126,20 +166,28 @@ class DefinitionManager(object):
                     )
                 )
 
-        # generate search tree. See `ECUFlashSearchTree` property
-        tree = {}
+        # generate search trees. See the "SearchTree" properties
+        editor_tree = {}
+        logger_tree = {}
         for d in self._ecuflash_defs.values():
             i = d.Info
             addr = i['internalidaddress']
             id_hex = i['internalidhex']
             id_str = i['internalidstring']
+            ecuid = i['ecuid']
+
+            # update outer level of logger tree
+            if ecuid:
+                if ecuid not in logger_tree:
+                    logger_tree[ecuid] = {}
 
             if not addr:
                 continue
 
+            # determine editor identifier
             addr = int(addr, base=16)
-            if addr not in tree:
-                tree[addr] = {}
+            if addr not in editor_tree:
+                editor_tree[addr] = {}
 
             if addr and id_hex:
                 val = bytes.fromhex(id_hex)
@@ -148,17 +196,31 @@ class DefinitionManager(object):
             else:
                 continue
 
+            # determine length of editor identifier
             nbytes = len(val)
-            if nbytes not in tree[addr]:
-                tree[addr][nbytes] = {}
-            if val not in tree[addr][nbytes]:
-                tree[addr][nbytes][val] = d
+            if nbytes not in editor_tree[addr]:
+                editor_tree[addr][nbytes] = {}
+
+            # update logger tree
+            if ecuid:
+                if val not in logger_tree[ecuid]:
+                    logger_tree[ecuid][val] = d
+                else:
+                    raise ValueError(
+                        'Logger tree: Duplicate definition of ecuid/internalid ' +
+                        '{}/{}'.format(ecuid, val)
+                    )
+
+            # update editor tree
+            if val not in editor_tree[addr][nbytes]:
+                editor_tree[addr][nbytes][val] = d
             else:
                 raise ValueError(
-                    'Duplicate definition of internalid {}'.format(val)
+                    'Editor tree: Duplicate definition of internalid {}'.format(val)
                 )
 
-        self._ecuflash_search_tree = tree
+        self._ecuflash_editor_tree = editor_tree
+        self._ecuflash_logger_tree = logger_tree
 
         _logger.info(
             'Loaded {} ECUFlash definitions'.format(
@@ -298,12 +360,23 @@ class DefinitionManager(object):
             )
 
     @property
+    def Definitions(self):
+        """Combined editor/logger definitions.
+
+        Stored as a nested `dict` of `ROMDefinition` values keyed by a
+        `logger_id` on the outer level, and an `editor_id` on the inner
+        level. These ids are `str`s, and are the same keys used for as
+        keys for the ECUFlash and RRLogger defs, respectively
+        """
+        return self._defs
+
+    @property
     def ECUFlashDefs(self):
         "`dict` of {`xmlid`: `<ECUFlashDef>`} key-val pairs"
         return self._ecuflash_defs
 
     @property
-    def ECUFlashSearchTree(self):
+    def ECUFlashEditorSearchTree(self):
         """Nested `dict` search tree to quickly locate an ECUFlash def
 
         Outer dictionary is keyed by `internalidaddress`, the next level
@@ -313,9 +386,22 @@ class DefinitionManager(object):
 
         e.g.: `A2UI001L` has an address of 0x2000, and only contains a
         `internalidstring` field. Thus, its def would be located at
-        self._ecuflash_search_tree[0x2000][8]['A2UI001L']
+        self._ecuflash_editor_tree[0x2000][8]['A2UI001L']
         """
-        return self._ecuflash_search_tree
+        return self._ecuflash_editor_tree
+
+    @property
+    def ECUFlashLoggerSearchTree(self):
+        """Nested `dict` search tree to quickly locate an ECUFlash def
+
+        Outer dictionary is keyed by `ecuid`, the final level is keyed
+        by the bytes of the internalid. If both tags are present,
+        `internalidhex` is used over `internalidstring`.
+
+        e.g.: `A2UI001L` is a particular image for ECUID `4B12785207`,
+        so its def would be located at self._ecuflash_logger_tree['4B12785207']['A2UI001L']
+        """
+        return self._ecuflash_logger_tree
 
     @property
     def RRLoggerDefs(self):
@@ -709,6 +795,15 @@ class ECUFlashDef(object):
 
     @property
     def Identifier(self):
+        if self._info:
+            id_hex = self._info.get('internalidhex', None)
+            id_str = self._info.get('internalidstring', None)
+
+            if id_hex:
+                return bytes.fromhex(id_hex)
+            elif id_str:
+                return id_str.encode('ascii')
+
         return self._identifier
 
     @property
@@ -1095,7 +1190,13 @@ class ROMDefinition(PyrrhicJSONSerializable):
     def __init__(self, EditorDef=None, LoggerDef=None):
         self._editor_def = EditorDef
         self._logger_def = LoggerDef
-        self._tables = {}
+
+    def __repr__(self):
+        return '<{}: {}/{}>'.format(
+            type(self).__name__,
+            self._logger_def.Identifier,
+            self._editor_def.Identifier
+        )
 
     def to_json(self):
         # TODO
@@ -1112,3 +1213,11 @@ class ROMDefinition(PyrrhicJSONSerializable):
     @property
     def LoggerDef(self):
         return self._logger_def
+
+    @property
+    def EditorID(self):
+        return self._editor_def.Identifier if self._editor_def else None
+
+    @property
+    def LoggerID(self):
+        return self._logger_def.Identifier if self._logger_def else None

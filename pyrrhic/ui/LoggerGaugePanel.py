@@ -15,6 +15,8 @@
 
 import wx
 
+from pubsub import pub
+
 from .panelsBase import bLoggerGaugePanel
 from .GaugePanel import GaugePanel
 
@@ -22,6 +24,9 @@ class LoggerGaugePanel(bLoggerGaugePanel):
     def __init__(self, *args):
         super(LoggerGaugePanel, self).__init__(*args)
         self._gauge_map = {}
+
+        pub.subscribe(self.update_gauges, 'logger.query.updated')
+        pub.subscribe(self.refresh_gauges, 'logger.params.updated')
 
     def update_gauges(self, params):
 

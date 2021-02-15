@@ -15,9 +15,12 @@
 
 import wx
 
+from pubsub import pub
+from wx import aui
+
 from .panelsBase import bTablePanel
 from ..common.enums import DataType
-from ..common.structures import RomTable
+from ..common.structures import RamTable, RomTable
 
 class TablePanel(bTablePanel):
     def __init__(self, parent, identifier, table, **kwargs):
@@ -29,9 +32,29 @@ class TablePanel(bTablePanel):
         self._initialize()
         self.populate()
 
+        self._ramtune_items = [
+            self._t_pop_from_ROM,
+            self._t_pop_from_RAM,
+            self._t_commit,
+            self._t_auto_commit
+        ]
+
+        # remove RAMtune controls for `RomTable` panels
+        if isinstance(self._table, RomTable):
+            for item in self._ramtune_items:
+                tid = item.GetId()
+                self._toolbar.RemoveTool(tid)
+
+        # disable axes editing for `RamTable` panels
+        elif isinstance(self._table, RamTable):
+            self._x_grid.Enable(False)
+            self._y_grid.Enable(False)
+
         self.Fit()
         self.SetMaxSize(self.GetSize())
         self.SetScrollRate(5, 5)
+
+        pub.subscribe(self.populate, 'livetune.state.pull.complete')
 
     def _initialize(self):
         self._num_cols = 1
@@ -90,9 +113,9 @@ class TablePanel(bTablePanel):
         _to_str = lambda x, y: _format_map[y].format(x)
 
         vals = table.DisplayValues
-        if self._dtype == DataType.BLOB:
+        if table.Definition.Datatype == DataType.BLOB:
             val = vals
-        elif self._dtype == DataType.STATIC:
+        elif table.Definition.Datatype == DataType.STATIC:
             val = vals[col]
         else:
             dtype = vals.dtype.kind
@@ -130,7 +153,9 @@ class TablePanel(bTablePanel):
                 self._set_value(self._table, self._table_grid, i, j)
 
         self.Refresh()
-        self._controller.refresh_table(self._table)
+
+        msg = 'rom' if isinstance(self._table, RomTable) else 'ram'
+        pub.sendMessage('editor.table.{}.change'.format(msg), obj=self)
 
     def OnSelect(self, event):
         obj = event.GetEventObject()
@@ -253,6 +278,15 @@ class TablePanel(bTablePanel):
         # propagate key events for any non-handled keys
         else:
             event.Skip()
+
+    def OnROMPopulate(self, event):
+        pass
+
+    def OnRAMPopulate(self, event):
+        pass
+
+    def OnCommit(self, event):
+        pub.sendMessage('livetune.state.push.init')
 
     @property
     def Identifier(self):

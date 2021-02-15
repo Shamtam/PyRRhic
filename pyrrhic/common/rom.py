@@ -18,9 +18,10 @@ import os
 
 from wx import dataview as dv
 
+from ..common.definitions import ROMDefinition
 from ..common.enums import UserLevel
 from ..common.helpers import Container
-from .structures import RomTable
+from .structures import RomTable, RamTable
 
 _logger = logging.getLogger(__name__)
 
@@ -47,12 +48,23 @@ class Rom(object):
         # nested `dict` keyed as follows
         # tables[<category>][<name>]
         self._tables = TableCategoryContainer(self)
+        self._ram_tables = TableCategoryContainer(self)
+
+        # all live-tunable tables keyed by ROM address
+        self._ram_tables_addr = {}
 
         # nested `dict` keyed as follows:
         # log_params[<std|extended>][<name>]
         self._log_params = LogParamContainer(self)
 
         self._initialize()
+
+    def __repr__(self):
+        return '<Rom {}/{} [{}]>'.format(
+            self._definition.LoggerID,
+            self._definition.EditorID,
+            self._filepath
+        )
 
     def _initialize(self):
         _logger.debug(
@@ -89,7 +101,39 @@ class Rom(object):
                 continue
 
             tables[cat][name] = RomTable(self, tab)
+
         self._tables = tables
+
+        # TODO: initialize RAM tables only if compatible... add some
+        # smarts or a definition that explicity marks tables that are
+        # RAM-tunable
+        # for now only initialize 2D and 3D tables as RAM tables
+        ram_tables = TableCategoryContainer(self)
+        for cat in self._tables:
+
+            if cat not in ram_tables:
+                ram_tables[cat] = TableContainer(ram_tables, name=cat)
+
+            for tab in self._tables[cat].values():
+                if tab.Axes:
+                    ram_tables[cat][tab.Definition.Name] = RamTable(self, tab)
+
+        self._ram_tables = ram_tables
+
+        # initialize dict of RAM tables keyed by their ROM address
+        for cat in self._ram_tables:
+            for tab in self._ram_tables[cat].values():
+                addr = tab.RomAddress
+                self._ram_tables_addr[addr] = tab
+
+    def get_ram_table_by_address(self, rom_addr):
+        """Return `RAMTable` corresponding to the given ROM address."""
+        if rom_addr not in self._ram_tables_addr:
+            raise ValueError(
+                'Unable to locate definition of table with ROM address '
+                '0x{:x}'.format(rom_addr)
+            )
+        return self._ram_tables_addr[rom_addr]
 
     def save(self, fpath=None):
         """Save the ROM image.
@@ -124,6 +168,17 @@ class Rom(object):
         self._filepath = out_path
 
     @property
+    def Definition(self):
+        """`ROMDefinition` corresponding to this ROM"""
+        return self._definition
+
+    @Definition.setter
+    def Definition(self, d):
+        if isinstance(d, ROMDefinition):
+            if self._definition.EditorID == d.EditorID:
+                self._definition = d
+
+    @property
     def OriginalBytes(self):
         '`bytes` object containing the original raw ROM binary'
         return self._orig_bytes
@@ -144,6 +199,10 @@ class Rom(object):
     @property
     def Tables(self):
         return self._tables
+
+    @property
+    def RAMTables(self):
+        return self._ram_tables
 
     @property
     def IsModified(self):

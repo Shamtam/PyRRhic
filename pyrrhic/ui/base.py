@@ -8,6 +8,7 @@
 ###########################################################################
 
 from .TreePanel import TreePanel
+from .RAMTreePanel import RAMTreePanel
 from .ConsolePanel import ConsolePanel
 from .BaseFrame import BaseFrame
 from .LoggerParamPanel import LoggerParamPanel
@@ -125,15 +126,20 @@ class bEditorFrame ( BaseFrame ):
         self._menubar.Append( self._m_file, u"File" )
 
         self._m_view = wx.Menu()
-        self._mi_view_romdata = wx.MenuItem( self._m_view, wx.ID_ANY, u"ROM Data", wx.EmptyString, wx.ITEM_CHECK )
-        self._mi_view_romdata.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_TICK_MARK, wx.ART_MENU ) )
+        self._mi_view_romdata = wx.MenuItem( self._m_view, wx.ID_ANY, u"ROM Data", u"Toggle Loaded ROMs Pane", wx.ITEM_CHECK )
+        self._mi_view_romdata.SetBitmap( wx.NullBitmap )
         self._m_view.Append( self._mi_view_romdata )
         self._mi_view_romdata.Check( True )
 
-        self._mi_view_log = wx.MenuItem( self._m_view, wx.ID_ANY, u"Log", wx.EmptyString, wx.ITEM_CHECK )
-        self._mi_view_log.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_TICK_MARK, wx.ART_MENU ) )
-        self._m_view.Append( self._mi_view_log )
-        self._mi_view_log.Check( True )
+        self._mi_view_console = wx.MenuItem( self._m_view, wx.ID_ANY, u"Console", u"Toggle Console Pane", wx.ITEM_CHECK )
+        self._mi_view_console.SetBitmap( wx.NullBitmap )
+        self._m_view.Append( self._mi_view_console )
+        self._mi_view_console.Check( True )
+
+        self._mi_view_livetune = wx.MenuItem( self._m_view, wx.ID_ANY, u"Live Tuning", u"Toggle Live Tuning Pane", wx.ITEM_CHECK )
+        self._mi_view_livetune.SetBitmap( wx.NullBitmap )
+        self._m_view.Append( self._mi_view_livetune )
+        self._mi_view_livetune.Enable( False )
 
         self._menubar.Append( self._m_view, u"View" )
 
@@ -151,24 +157,29 @@ class bEditorFrame ( BaseFrame ):
 
         self._status_bar = self.CreateStatusBar( 1, wx.STB_SIZEGRIP, wx.ID_ANY )
         self._tree_panel = TreePanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        self.m_mgr.AddPane( self._tree_panel, wx.aui.AuiPaneInfo() .Name( u"RomDataPane" ).Left() .Caption( u"ROM Data" ).CloseButton( False ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.DefaultSize ).BottomDockable( False ).TopDockable( False ).Row( 1 ).MinSize( wx.Size( 400,-1 ) ) )
+        self.m_mgr.AddPane( self._tree_panel, wx.aui.AuiPaneInfo() .Name( u"RomDataPane" ).Left() .Caption( u"ROM Data" ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.DefaultSize ).BottomDockable( False ).TopDockable( False ).Row( 1 ).MinSize( wx.Size( 400,-1 ) ) )
+
+        self._livetune_panel = RAMTreePanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
+        self.m_mgr.AddPane( self._livetune_panel, wx.aui.AuiPaneInfo() .Name( u"RAMTablePane" ).Left() .Caption( u"RAM Tables" ).PaneBorder( False ).Hide().Dock().Resizable().FloatingSize( wx.DefaultSize ).BottomDockable( False ).TopDockable( False ).Row( 1 ).MinSize( wx.Size( 400,-1 ) ) )
 
         self._console_panel = ConsolePanel( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TAB_TRAVERSAL )
-        self.m_mgr.AddPane( self._console_panel, wx.aui.AuiPaneInfo() .Name( u"ConsolePane" ).Center() .Caption( u"Console" ).CloseButton( False ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.Size( -1,-1 ) ).Row( 1 ).Position( 0 ).MinSize( wx.Size( 600,-1 ) ) )
+        self.m_mgr.AddPane( self._console_panel, wx.aui.AuiPaneInfo() .Name( u"ConsolePane" ).Center() .Caption( u"Console" ).PaneBorder( False ).Dock().Resizable().FloatingSize( wx.Size( -1,-1 ) ).Row( 1 ).Position( 0 ).MinSize( wx.Size( 600,-1 ) ) )
 
 
         self.m_mgr.Update()
         self.Centre( wx.BOTH )
 
         # Connect Events
+        self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnTogglePane )
         self.Bind( wx.EVT_CLOSE, self.OnClose )
         self.Bind( wx.EVT_MENU, self.OnOpenRom, id = self._mi_open.GetId() )
         self.Bind( wx.EVT_MENU, self.OnSaveRom, id = self._mi_save.GetId() )
         self.Bind( wx.EVT_MENU, self.OnSaveRomAs, id = self._mi_save_as.GetId() )
         self.Bind( wx.EVT_MENU, self.OnPreferences, id = self._mi_file_prefs.GetId() )
         self.Bind( wx.EVT_MENU, self.OnClose, id = self._mi_exit.GetId() )
-        self.Bind( wx.EVT_MENU, self.OnViewRomData, id = self._mi_view_romdata.GetId() )
-        self.Bind( wx.EVT_MENU, self.OnViewLog, id = self._mi_view_log.GetId() )
+        self.Bind( wx.EVT_MENU, self.OnTogglePane, id = self._mi_view_romdata.GetId() )
+        self.Bind( wx.EVT_MENU, self.OnTogglePane, id = self._mi_view_console.GetId() )
+        self.Bind( wx.EVT_MENU, self.OnTogglePane, id = self._mi_view_livetune.GetId() )
         self.Bind( wx.EVT_TOOL, self.OnOpenRom, id = self._tb_open.GetId() )
         self.Bind( wx.EVT_TOOL, self.OnSaveRom, id = self._tb_save.GetId() )
         self.Bind( wx.EVT_TOOL, self.OnSaveRomAs, id = self._tb_save_as.GetId() )
@@ -179,6 +190,9 @@ class bEditorFrame ( BaseFrame ):
 
 
     # Virtual event handlers, overide them in your derived class
+    def OnTogglePane( self, event ):
+        event.Skip()
+
     def OnClose( self, event ):
         event.Skip()
 
@@ -195,11 +209,8 @@ class bEditorFrame ( BaseFrame ):
         event.Skip()
 
 
-    def OnViewRomData( self, event ):
-        event.Skip()
 
-    def OnViewLog( self, event ):
-        event.Skip()
+
 
 
 

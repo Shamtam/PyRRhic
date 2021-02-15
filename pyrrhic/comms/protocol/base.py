@@ -14,11 +14,16 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime
+from enum import IntFlag, auto
 
-from ...common.definitions import RRLoggerDef
+from ...common.definitions import ROMDefinition
 
 class TranslatorParseError(Exception):
+    pass
+class TranslatorLiveTuneInit(Exception):
+    pass
+class TranslatorLiveTuneQueryDone(Exception):
     pass
 
 class EndpointProtocol(object):
@@ -43,7 +48,7 @@ class EndpointProtocol(object):
         self._phy = None
         self._protocol = None
 
-    def check_logger_response(self):
+    def check_receive_buffer(self):
         """Checks receive buffer for a response to a logging query.
 
         Returns a `bytes` containing the raw query data from the
@@ -67,6 +72,12 @@ class EndpointProtocol(object):
         """
         raise NotImplementedError
 
+    def interrupt_endpoint(self):
+        """Interrupt an endpoint currently in a state of transmitting
+        continuous query data.
+        """
+        raise NotImplementedError
+
     @property
     def Interface(self):
         "Returns the underlying `CommunicationDevice` subclass"
@@ -84,16 +95,48 @@ class EndpointTranslator(object):
     _max_request = None
 
     def __init__(self):
-        self._log_def = None
+        self._def = None
         self._reset_freq_avg()
 
-    def generate_request(self):
+    def _check_def(self):
+        if not self._def:
+            raise RuntimeError(
+                'Translator error, Unspecified logger definition'
+            )
+
+    def generate_log_request(self):
         """Return a `3-tuple` used to request a query from the endpoint.
 
         The returned `tuple` looks like `(func, args, kwargs)`, where
         `func` is the name of the `EndpointProtocol` callable that is
         called to send the request to the endpoint, and `args` and
         `kwargs` are arguments and keywords to pass to the callable.
+        """
+        raise NotImplementedError
+
+    def generate_ramtune_state_request(self, tables=None):
+        """Return a `3-tuple` used to request the current RAM tune state
+        from the endpoint.
+
+        See `generate_log_request` for more information.
+
+        Keywords [Default]:
+        - `tables` [`None`]: `list` of `RamTable`s to request. If no
+        tables are passed in, this only requests the RAM tune header
+        information to determine the RAM-tune state of the endpoint.
+        """
+        raise NotImplementedError
+
+    def generate_ramtune_state_update(self, tables=None):
+        """Return a `3-tuple` used to send any updates of the RAM tune
+        state to the endpoint.
+
+        See `generate_log_request` for more information.
+
+        Keywords [Default]:
+        - `tables` [`None`]: `list` of `RamTable`s to request. If no
+        tables are passed in, this only updates the RAM tune header
+        information.
         """
         raise NotImplementedError
 
@@ -104,6 +147,15 @@ class EndpointTranslator(object):
         - `resp`: `bytes` containing the raw data from the endpoint
         """
         raise NotImplementedError
+
+    def extract_ramtune_state(self, tables=None):
+        """Update the current RAM tune state from the given byte string.
+
+        Keywords [Default]:
+        - `tables` [`None`]: `list` of `RamTable`s corresponding to the
+            byte string passed in. If no tables are passed in, the byte
+            string passed in corresponds to the RAM tune header info.
+        """
 
     def _reset_freq_avg(self):
         self._resp_times = deque([], maxlen=10)
@@ -127,26 +179,42 @@ class EndpointTranslator(object):
 
     @property
     def Definition(self):
-        return self._log_def
+        return self._def
 
     @Definition.setter
     def Definition(self, d):
-        if isinstance(d, RRLoggerDef):
-            self._log_def = d
+        if isinstance(d, ROMDefinition):
+            self._def = d
 
     @property
     def EnabledParams(self):
-        if self._log_def:
-            return [x for x in self._log_def.AllParameters.values() if x.Enabled]
+        if self._def:
+            return [
+                x for x in self._def.LoggerDef.AllParameters.values()
+                if x.Enabled
+            ]
         else:
             return []
 
     @property
     def EnabledSwitches(self):
-        if self._log_def:
-            return [x for x in self._log_def.AllSwitches.values() if x.Enabled]
+        if self._def:
+            return [
+                x for x in self._def.LoggerDef.AllSwitches.values()
+                if x.Enabled
+            ]
         else:
             return []
+
+    @property
+    def SupportsLiveTune(self):
+        """Return whether or not it is possible to live tune this endpoint."""
+        raise NotImplementedError
+
+    @property
+    def LiveTuneData(self):
+        """`LiveTune` instance."""
+        raise NotImplementedError
 
     @property
     def AverageFreq(self):

@@ -26,6 +26,11 @@ class Container(UserDict):
         self._parent = parent
         self._name = name
 
+    def __repr__(self):
+        return '<{}: "{}" [{}]>'.format(
+            type(self).__name__, self._name, len(self.data)
+        )
+
     @property
     def Parent(self):
         return self._parent
