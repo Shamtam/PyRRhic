@@ -441,6 +441,18 @@
                         <property name="window_extra_style"></property>
                         <property name="window_name"></property>
                         <property name="window_style"></property>
+                        <object class="tool" expanded="1">
+                            <property name="bitmap">Load From Art Provider; wxART_MISSING_IMAGE; wxART_TOOLBAR</property>
+                            <property name="context_menu">0</property>
+                            <property name="id">wxID_ANY</property>
+                            <property name="kind">wxITEM_NORMAL</property>
+                            <property name="label">Revert</property>
+                            <property name="name">_t_revert</property>
+                            <property name="permission">protected</property>
+                            <property name="statusbar">Revert Changes</property>
+                            <property name="tooltip">Revert Changes</property>
+                            <event name="OnToolClicked">OnRevert</event>
+                        </object>
                         <object class="tool" expanded="0">
                             <property name="bitmap">Load From Art Provider; wxART_PLUS; wxART_TOOLBAR</property>
                             <property name="context_menu">0</property>
@@ -664,7 +676,7 @@
                         <property name="drag_col_size">0</property>
                         <property name="drag_grid_size">0</property>
                         <property name="drag_row_size">0</property>
-                        <property name="editing">0</property>
+                        <property name="editing">1</property>
                         <property name="enabled">1</property>
                         <property name="fg"></property>
                         <property name="floatable">1</property>
@@ -708,6 +720,7 @@
                         <property name="window_extra_style"></property>
                         <property name="window_name"></property>
                         <property name="window_style"></property>
+                        <event name="OnGridCmdCellChange">OnCellChange</event>
                         <event name="OnGridCmdRangeSelect">OnSelect</event>
                         <event name="OnGridCmdSelectCell">OnSelect</event>
                         <event name="OnKeyDown">OnKeyDown</event>
@@ -758,7 +771,7 @@
                         <property name="drag_col_size">0</property>
                         <property name="drag_grid_size">0</property>
                         <property name="drag_row_size">0</property>
-                        <property name="editing">0</property>
+                        <property name="editing">1</property>
                         <property name="enabled">1</property>
                         <property name="fg"></property>
                         <property name="floatable">1</property>
@@ -852,7 +865,7 @@
                         <property name="drag_col_size">0</property>
                         <property name="drag_grid_size">0</property>
                         <property name="drag_row_size">0</property>
-                        <property name="editing">0</property>
+                        <property name="editing">1</property>
                         <property name="enabled">1</property>
                         <property name="fg"></property>
                         <property name="floatable">1</property>

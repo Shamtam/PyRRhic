@@ -15,15 +15,10 @@
 
 from collections import deque
 from datetime import datetime
-from enum import IntFlag, auto
 
 from ...common.definitions import ROMDefinition
 
 class TranslatorParseError(Exception):
-    pass
-class TranslatorLiveTuneInit(Exception):
-    pass
-class TranslatorLiveTuneQueryDone(Exception):
     pass
 
 class EndpointProtocol(object):

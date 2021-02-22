@@ -20,6 +20,7 @@ from wx import dataview as dv
 
 from ..common.rom import Rom, TableContainer
 from ..common.structures import RamTable
+from ..livetune import LiveTuneState
 from .panelsBase import bRAMTreePanel
 from .ViewModels import RamViewModel, OptionalToggleRenderer
 
@@ -31,8 +32,6 @@ class RAMTreePanel(bRAMTreePanel):
 
         self._base_ram_label = self._RAM_label.GetLabelText()
         self._base_table_label = self._tables_label.GetLabelText()
-
-
 
     def initialize(self, livetune=None):
         self._livetune = livetune
@@ -79,6 +78,10 @@ class RAMTreePanel(bRAMTreePanel):
 
         self._dvc.Enable(False)
 
+        if livetune:
+            self._gauge.SetRange(livetune.TotalSize)
+
+        pub.subscribe(self.OnReset, 'logger.connection')
         pub.subscribe(self.OnPending, 'livetune.state.pending')
         pub.subscribe(self.OnPullFailed, 'livetune.state.pull.failed')
         pub.subscribe(self.OnPullComplete, 'livetune.state.pull.complete')
@@ -98,11 +101,9 @@ class RAMTreePanel(bRAMTreePanel):
         for item in exp_items:
             self._dvc.Expand(item)
 
-        # while items:
-        #     item = items.pop()
-        #     self._model.ItemChanged(item)
-        #     if self._dvc.IsExpanded(item):
-        #         self._model.GetChildren(item, items)
+        self._push_but.Enable(
+            self._livetune.State & LiveTuneState.WRITE_PENDING
+        )
 
     def OnToggle(self, event):
         item = event.GetItem()
@@ -113,18 +114,18 @@ class RAMTreePanel(bRAMTreePanel):
             dvc.Collapse(item) if dvc.IsExpanded(item) else dvc.Expand(item)
 
         elif isinstance(node, RamTable):
-            if node.RamAddress is not None:
+            if node.RomAddress in self._livetune.RomAddresses:
                 pub.sendMessage('editor.table.toggle', table=node)
 
     def OnValueChange(self, event=None):
         if self._livetune:
+
             used_bytes = self._livetune.AllocatedSize
             total_bytes = self._livetune.TotalSize
-            num_tables = len(self._livetune.Tables)
+            num_tables = len(self._livetune.AllocatedTables)
 
             pending_bytes = self._livetune.PendingSize
             pending_allocations = self._livetune.PendingAllocations
-            pending_activations = self._livetune.PendingActivations
 
             if pending_allocations:
                 self._RAM_label.SetLabelText('{} {}/{} ({}/{})'.format(
@@ -132,9 +133,10 @@ class RAMTreePanel(bRAMTreePanel):
                     used_bytes, total_bytes,
                     pending_bytes, total_bytes
                 ))
-                table_delta = sum(
-                    [-1 if x.RamAddress else 1 for x in pending_allocations.values()]
-                )
+                table_delta = sum([
+                    1 if x.RamAddress else -1
+                    for x in pending_allocations.values()
+                ])
                 self._tables_label.SetLabelText('{} {} ({})'.format(
                     self._base_table_label,
                     num_tables, num_tables + table_delta
@@ -152,12 +154,21 @@ class RAMTreePanel(bRAMTreePanel):
                     num_tables
                 ))
 
-            self._gauge.SetRange(total_bytes)
             self._gauge.SetValue(used_bytes)
 
             self._push_but.Enable(
-                bool(pending_allocations) or bool(pending_activations)
+                self._livetune.State & LiveTuneState.WRITE_PENDING
             )
+
+    def OnReset(self):
+        if self._livetune:
+            self._livetune.initialize()
+            self._initialized = False
+            self._pull_but.Enable()
+            self._push_but.Disable()
+            self._dvc.Disable()
+            self._gauge.SetValue(0)
+            self._gauge.SetRange(self._livetune.TotalSize)
 
     def OnPullState(self, event=None):
         if self._livetune:
@@ -173,17 +184,18 @@ class RAMTreePanel(bRAMTreePanel):
         self._pull_but.Disable()
         self._push_but.Disable()
         self._dvc.Disable()
+        self._gauge.SetValue(0)
         self._gauge.Pulse()
 
     def OnPullFailed(self):
-        self._model.Cleared()
+        self.refresh_tree()
         self._pull_but.Enable()
         self._push_but.Disable()
         self._dvc.Disable()
         self._gauge.SetValue(0)
 
     def OnPullComplete(self):
-        self._model.Cleared()
+        self.refresh_tree()
 
         self.OnValueChange()
         self._dvc.Enable(True)
@@ -192,7 +204,7 @@ class RAMTreePanel(bRAMTreePanel):
         self._pull_but.Enable()
 
     def OnPushComplete(self):
-        self.OnPullState()
+        self.OnPullComplete()
 
     @property
     def Model(self):

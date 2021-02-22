@@ -14,12 +14,8 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import os
-
-from wx import dataview as dv
 
 from ..common.definitions import ROMDefinition
-from ..common.enums import UserLevel
 from ..common.helpers import Container
 from .structures import RomTable, RamTable
 
@@ -116,7 +112,7 @@ class Rom(object):
 
             for tab in self._tables[cat].values():
                 if tab.Axes:
-                    ram_tables[cat][tab.Definition.Name] = RamTable(self, tab)
+                    ram_tables[cat][tab.Definition.Name] = RamTable(tab)
 
         self._ram_tables = ram_tables
 

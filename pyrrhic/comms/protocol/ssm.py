@@ -207,13 +207,7 @@ class SSM_ISO9141(SSMProtocol):
         )
         msg = self._construct_message(dest, b'\xA0', payload)
 
-        # if continuous:
         self._phy.write(msg, timeout=self._timeout)
-        # else:
-            # resp = self._phy.query(
-            #     msg, num_msgs=2, timeout=self._timeout, delay=self._delay
-            # )
-            # return self._strip_response(resp)
 
     def read_addresses(self, dest, addr_list, continuous=False):
         payload = (
@@ -222,13 +216,7 @@ class SSM_ISO9141(SSMProtocol):
         )
         msg = self._construct_message(dest, b'\xA8', payload)
 
-        # if continuous:
         self._phy.write(msg, timeout=self._timeout)
-        # else:
-        #     resp = self._phy.query(
-        #         msg, num_msgs=2, timeout=self._timeout, delay=self._delay
-        #     )
-        #     return self._strip_response(resp)
 
     def write_block(self, dest, addr, data):
         payload = (addr & 0xffffff).to_bytes(3, 'big') + data
@@ -250,13 +238,12 @@ class SSMTranslator(EndpointTranslator):
     """SSM fast-poll (continuous read) translator"""
 
     # SSM A8 request max payload size
-    # need 3 bytes for each address in request, minus the command and
-    # continuous flag bytes
-    _max_read_payload = (0xFF - 2) // 3
+    # tested by trial and error on-car
+    _max_read_payload = 0x52
 
     # SSM B0 request max payload size
-    # subtract off 3 address bytes and command byte
-    _max_write_payload = 0xFF - 4
+    # tested by trial and error on-car
+    _max_write_payload = 0xF6
 
     def __init__(self):
         super(SSMTranslator, self).__init__()
@@ -304,7 +291,7 @@ class SSMTranslator(EndpointTranslator):
 
         if not len(resp) == len(self._addr_map):
             raise TranslatorParseError(
-                'Invalid response size. Expected {}, received {}'.format(
+                'Invalid response size. Received {}, expected {}'.format(
                     len(resp), len(self._addr_map)
                 )
             )
@@ -350,22 +337,14 @@ class SSMTranslator(EndpointTranslator):
         # no previous query and pulling from ECU, generate necessary query
         if self._livetune_query is None and self._livetune_write is None:
 
-            # already up-to-date, no query necessary
-            if self._livetune.State == LiveTuneState.INITIALIZED:
-                return
-
             # live tuning not initialized, query state from ECU
-            # step 1: query number of tables currently allocated in RAM
-            if not self._livetune.State & LiveTuneState.COUNT:
-                self._generate_table_count_query()
-
-            # step 2: query ROM/RAM table address headers
-            elif not self._livetune.State & LiveTuneState.HEADERS:
-                self._generate_header_query()
-
-            # step 3: query complete array of RAM tables
-            elif not self._livetune.State & LiveTuneState.TABLES:
-                self._generate_table_query()
+            if not self._livetune.State & LiveTuneState.INITIALIZED:
+                start_addr = 0xFFFFFF & self._livetune.StartAddress
+                end_addr = 0xFFFFFF & self._livetune.EndAddress
+                self._livetune_current_query = []
+                self._livetune_query = {
+                    k: None for k in range(start_addr, end_addr)
+                }
 
         # no previous query, and verifying ECU write
         elif self._livetune_query is None and self._livetune_write is not None:
@@ -375,6 +354,8 @@ class SSMTranslator(EndpointTranslator):
         # query is still incomplete
         if self._livetune_current_query is not None:
 
+            # generate list of addresses from current query that have
+            # not yet been read from the ECU
             undetermined_bytes = [
                 t[0] for t in filter(
                     lambda x: x[1] is None,
@@ -384,7 +365,8 @@ class SSMTranslator(EndpointTranslator):
 
             if undetermined_bytes:
                 # ensure query does not exceed maximum request size
-                self._livetune_current_query = undetermined_bytes[:self._max_read_payload]
+                self._livetune_current_query = \
+                    undetermined_bytes[:self._max_read_payload]
             else:
                 return
 
@@ -395,44 +377,6 @@ class SSMTranslator(EndpointTranslator):
         else:
             return
 
-    def _generate_table_count_query(self):
-        start_addr = 0xFFFFFF & self._livetune.StartAddress
-        end_addr = start_addr + 8
-        self._livetune_current_query = []
-        self._livetune_query = {k: None for k in range(start_addr, end_addr)}
-
-    def _generate_header_query(self):
-        num_tables = self._livetune.NumTables
-
-        # tables already allocated
-        if num_tables > 0:
-            start_addr = (0xFFFFFF & self._livetune.StartAddress) + 8
-            end_addr = start_addr + num_tables*8
-            self._livetune_current_query = []
-            self._livetune_query = {
-                k: None for k in range(start_addr, end_addr)
-            }
-
-        # no tables, clear queries
-        else:
-            self._livetune_current_query = None
-            self._livetune_query = None
-
-    def _generate_table_query(self):
-        tables = self._livetune.Tables
-
-        if tables:
-
-            _total_query = []
-
-            for table in tables:
-                start_addr = 0xFFFFFF & table.RamAddress
-                end_addr = start_addr + table.NumBytes
-                _total_query += range(start_addr, end_addr)
-
-                self._livetune_current_query = []
-                self._livetune_query = {k: None for k in _total_query}
-
     def generate_livetune_write(self):
         if not self._livetune:
             return
@@ -441,27 +385,19 @@ class SSMTranslator(EndpointTranslator):
         if self._livetune_write is None:
 
             # no writes pending, clear any stored writes
-            if (
-                not (self._livetune.State &
-                    (LiveTuneState.PEND_ALLOCATE | LiveTuneState.PEND_ACTIVATE)
-                ) and self._livetune.State & LiveTuneState.TABLES
-            ):
+            if not self._livetune.State & LiveTuneState.WRITE_PENDING:
                 return
 
-            # tables need to be allocated
-            if self._livetune.State & LiveTuneState.PEND_ALLOCATE:
-                self._livetune_write = self._livetune.process_allocation()
-                self._livetune_current_write = ()
-
-            # tables need to be updated
-            elif not (self._livetune.State & LiveTuneState.TABLES):
-                self._livetune_write = self._livetune.process_modification()
-                self._livetune_current_write = ()
-
-            # tables need to be activated
-            elif self._livetune.State & LiveTuneState.PEND_ACTIVATE:
-                self._livetune_write = self._livetune.process_activation()
-                self._livetune_current_write = ()
+            else:
+                final = (
+                    True
+                    if self._livetune.State & LiveTuneState.FINALIZE_WRITE
+                    else False
+                )
+                self._livetune_write = self._livetune.get_modified_bytes(
+                    force_deactivate=not final
+                )
+                self._livetune_current_write = {}
 
         if self._livetune_current_write is not None:
 
@@ -484,11 +420,20 @@ class SSMTranslator(EndpointTranslator):
 
                 # ensure write does not exceed maximum packet size
                 chunk_addrs = chunk_addrs[:self._max_write_payload]
-                chunk_data = b''.join([self._livetune_write[x] for x in chunk_addrs])
+                chunk_data = b''.join([
+                    self._livetune_write[x] for x in chunk_addrs
+                ])
 
-                self._livetune_current_write = (chunk_addrs, chunk_data)
+                self._livetune_current_write = {
+                    a: d for a, d in zip(chunk_addrs, chunk_data)
+                }
 
-            # write complete, clear stored write
+            # initial write complete, need to finalize
+            elif self._livetune.State & LiveTuneState.FINALIZE_WRITE:
+                self._livetune_write = self._livetune.get_modified_bytes(
+                    force_deactivate=False
+                )
+
             else:
                 self._livetune_write = None
                 self._livetune_current_write = None
@@ -515,9 +460,15 @@ class SSMTranslator(EndpointTranslator):
             return
 
         if self._livetune_current_write:
-            addrs, data = self._livetune_current_write
-            written_bytes = {a: None for a in addrs}
-            self._livetune_write.update(written_bytes)
+            self._livetune.verify_write(self._livetune_current_write)
+            self._livetune_write.update(
+                {a: None for a in self._livetune_current_write}
+            )
+
+            # clear write if everything has been completed
+            if all([x is None for x in self._livetune_write.values()]):
+                self._livetune_write = None
+                self._livetune_current_write = None
 
     def extract_livetune_state(self, resp):
         self._check_def()
@@ -544,18 +495,9 @@ class SSMTranslator(EndpointTranslator):
         if complete:
 
             try:
-                # completely uninitialized, query contains number of tables
-                if not self._livetune.State & LiveTuneState.COUNT:
-                    self._extract_livetune_table_count()
-
-                # only table count known, query contains headers
-                elif not self._livetune.State & LiveTuneState.HEADERS:
-                    self._extract_livetune_headers()
-
-                # table count and headers determined, query contains raw
-                # table data
-                elif not self._livetune.State & LiveTuneState.TABLES:
-                    self._extract_livetune_tables()
+                if not self._livetune.State & LiveTuneState.INITIALIZED:
+                    raw_bytes = b''.join(self._livetune_query.values())
+                    self._livetune.initialize(raw_bytes)
 
             except Exception as e:
                 raise TranslatorParseError(str(e))
@@ -564,42 +506,7 @@ class SSMTranslator(EndpointTranslator):
                 self._livetune_query = None
                 self._livetune_current_query = None
 
-        if self._livetune.State == LiveTuneState.INITIALIZED:
-            return # TODO: signal controller to send init complete
-
-    def _extract_livetune_table_count(self):
-        num_table_bytes = list(self._livetune_query.values())[4:]
-        num_tables = int.from_bytes(b''.join(num_table_bytes), 'big')
-        self._livetune.init_table_count(num_tables)
-
-    def _extract_livetune_headers(self):
-        num_tables = len(self._livetune.Tables)
-        headers = list(self._livetune_query.values())
-        rom_headers = headers[:num_tables*4]
-        ram_headers = headers[-num_tables*4:]
-        format_str = '>{:d}L'.format(num_tables)
-
-        rom_addrs = struct.unpack(format_str, b''.join(rom_headers))
-        ram_addrs = struct.unpack(format_str, b''.join(ram_headers))
-
-        self._livetune.init_headers(rom_addrs, ram_addrs)
-
-    def _extract_livetune_tables(self):
-        tables = self._livetune.Tables
-        table_sizes = [x.NumBytes for x in tables]
-
-        if sum(table_sizes) != len(self._livetune_query):
-            raise TranslatorParseError(
-                'Mismatch between total allocated table size and query size'
-            )
-
-        raw_bytes = b''.join(self._livetune_query.values())
-        for table, num_bytes in zip(tables, table_sizes):
-            table_bytes = raw_bytes[:num_bytes]
-            raw_bytes = raw_bytes[num_bytes:]
-            table.initialize_bytes(orig_bytes=table_bytes)
-
-    def initialize_livetune(self, rom):
+    def instantiate_livetune(self, rom):
         addrs = MerpModLiveTune.check_livetune_support(self._def)
         if addrs:
             args = (rom, *addrs)

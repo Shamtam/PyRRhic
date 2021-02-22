@@ -17,20 +17,16 @@ from enum import IntFlag, auto
 
 class LiveTuneState(IntFlag):
     UNINITIALIZED   = 0
-
-    COUNT           = auto()
-    HEADERS         = auto()
-    TABLES          = auto()
-    INITIALIZED     = COUNT | HEADERS | TABLES
-
-    PEND_ALLOCATE   = auto()
-    PEND_ACTIVATE   = auto()
+    INITIALIZED     = auto()
+    WRITE_PENDING   = auto()
+    FINALIZE_WRITE  = auto()
 
 class LiveTuneData(object):
     def __init__(self, rom, ram_size):
         self._rom = rom
         self._ram_size = ram_size
-        self._allocated_tables = []
+        self._ram_bytes = None
+        self._bytes = None
 
     def __repr__(self):
         return '<{} {}/{} {}>'.format(
@@ -40,24 +36,42 @@ class LiveTuneData(object):
             self.State
         )
 
+    def initialize(self, raw_bytes=None):
+        """Initialize the instance with the raw bytes read from RAM.
+
+        Keywords [Default]:
+        `raw_bytes` [`None`]: `bytes` containing raw bytes of the
+            complete section of RAM used for live tuning, or `None` to
+            uninitialize the instance
+        """
+        if isinstance(raw_bytes, bytes):
+            self._ram_bytes = bytearray(raw_bytes)
+            self._bytes = self._ram_bytes[:]
+        else:
+            self._ram_bytes = None
+            self._bytes = None
+
+    def check_allocatable(self, table):
+        raise NotImplementedError
+
     @property
     def ROM(self):
         """`Rom` instance"""
         return self._rom
 
     @property
-    def AllocatedSize(self):
-        if any([x is None for x in self._allocated_tables]):
-            return None
-        return sum([t.NumBytes for t in self._allocated_tables if t is not None])
-
-    @property
     def TotalSize(self):
         return self._ram_size
 
     @property
-    def Tables(self):
-        return self._allocated_tables
+    def AllocatedTables(self):
+        """`dict` of `RamTable` currently allocated on the ECU, keyed
+            by their ROM address."""
+        raise NotImplementedError
+
+    @property
+    def AllocatedSize(self):
+        raise NotImplementedError
 
     @property
     def State(self):

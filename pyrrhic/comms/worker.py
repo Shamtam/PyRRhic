@@ -204,6 +204,8 @@ class CommsWorker(PyrrhicWorker):
         # update current livetune query
         if request:
 
+            self._pause_logging()
+
             # only modify livetune query if currently not reading/writing
             if self._state & (CommsState.LIVETUNE_QUERY | CommsState.LIVETUNE_WRITE):
                 return
@@ -233,6 +235,8 @@ class CommsWorker(PyrrhicWorker):
 
         # update current livetune write
         if payload:
+
+            self._pause_logging()
 
             # only modify livetune write if currently not reading/writing
             if self._state & (CommsState.LIVETUNE_QUERY | CommsState.LIVETUNE_WRITE):
@@ -270,12 +274,13 @@ class CommsWorker(PyrrhicWorker):
 
     def _initiate_write(self):
         if self._current_livetune_write:
+
             write, verify, check = self._current_livetune_write
             func, args, kwargs = write
 
-        args = (self._current_endpoint, *args)
-        getattr(self._protocol, func)(*args, **kwargs)
-        self._state |= CommsState.LIVETUNE_VERIFY
+            args = (self._current_endpoint, *args)
+            getattr(self._protocol, func)(*args, **kwargs)
+            self._state |= CommsState.LIVETUNE_VERIFY | CommsState.WAIT_FOR_RESP
 
     def _check_query_response(self):
 
@@ -301,6 +306,7 @@ class CommsWorker(PyrrhicWorker):
                     self._current_livetune_write = None
                     self._state &= ~(
                         CommsState.LIVETUNE_WRITE | CommsState.LIVETUNE_VERIFY
+                        | CommsState.WAIT_FOR_RESP
                     )
                 # write unsuccessful, clear verify and waiting flag to retry write
                 else:
@@ -311,17 +317,23 @@ class CommsWorker(PyrrhicWorker):
 
             elif msg == 'LiveTuneResponse':
                 self._current_livetune_query = None
-                self._state &= ~CommsState.LIVETUNE_QUERY
+                self._state &= ~(
+                    CommsState.LIVETUNE_QUERY | CommsState.WAIT_FOR_RESP
+                )
 
             elif msg == 'LogQueryResponse':
-                self._current_log_query = None
-                self._state &= ~CommsState.LOG_QUERY
+                # if non-continuous, reset the query and waiting flags
+                if not (self._state & CommsState.CONT_LOG_QUERY):
+                    self._current_log_query = None
+                    self._state &= ~CommsState.LOG_QUERY
 
             self._out_q.put(PyrrhicMessage(msg, data=resp))
 
-            # if non-continuous, reset the waiting flag
-            if not (self._state & CommsState.CONT_LOG_QUERY):
-                self._state &= ~CommsState.WAIT_FOR_RESP
+    def _pause_logging(self):
+        # interrupt and clear waiting flags
+        self._protocol.interrupt_endpoint(self._current_endpoint)
+        self._interface.clear_buffers()
+        self._state &= ~CommsState.WAIT_FOR_RESP
 
     def _set_output_file(self, file_path):
         """Set the current output file to stream logging data to

@@ -63,7 +63,6 @@ class PyrrhicController(object):
 
         pub.subscribe(self.live_tune_pull, 'livetune.state.pull.init')
         pub.subscribe(self.live_tune_push, 'livetune.state.push.init')
-        pub.subscribe(self.toggle_table, 'editor.table.toggle')
 
         self.refresh_interfaces()
 
@@ -132,9 +131,6 @@ class PyrrhicController(object):
             'Unable to find matching definition for ROM'
         )
 
-    def toggle_table(self, table):
-        self.EditorFrame.toggle_table(table)
-
 # Logger
     def refresh_interfaces(self):
         self._available_interfaces = get_all_interfaces()
@@ -184,7 +180,7 @@ class PyrrhicController(object):
             _logger.info('Logger disconnected')
             self._comms_worker = None
 
-        self._logger_frame.on_connection(connected=False)
+        pub.sendMessage('logger.connection.change', connected=False)
 
         # remove all parameters from UI
         pub.sendMessage('logger.query.updated', params=[])
@@ -217,7 +213,7 @@ class PyrrhicController(object):
                         self._comms_translator.extract_values(data)
                     except TranslatorParseError as e:
                         pub.sendMessage('logger.status',
-                            center=e.message, temporary=True
+                            center=str(e), temporary=True
                         )
                         return
 
@@ -232,7 +228,7 @@ class PyrrhicController(object):
                         self._comms_translator.extract_livetune_state(data)
 
                     except TranslatorParseError as e:
-                        _logger.warning(e.message)
+                        _logger.warning(str(e))
 
                     else:
                         req = self._comms_translator.generate_livetune_query()
@@ -321,7 +317,7 @@ class PyrrhicController(object):
             )
 
             self._comms_translator.Definition = definition
-            self._logger_frame.on_connection(translator=self._comms_translator)
+            pub.sendMessage('logger.connection.change', translator=self._comms_translator)
 
             # check if a ROM corresponding to the initialized ECU has been loaded
             if self._roms:
@@ -352,7 +348,7 @@ class PyrrhicController(object):
                         lambda x: x.Definition.EditorID == editor_id,
                         self._roms.values()
                     ))
-                    self._comms_translator.initialize_livetune(rom)
+                    self._comms_translator.instantiate_livetune(rom)
 
                     if self._comms_translator.SupportsLiveTune:
                         pub.sendMessage(

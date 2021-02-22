@@ -16,41 +16,13 @@
 import os
 import wx
 
-from natsort import natsort_key, ns
+from natsort import natsort_key, natsort_keygen, ns
 from pubsub import pub
 from wx import dataview as dv
 
 from ..common.enums import UserLevel
-from ..common.helpers import Container
 from ..common.rom import Rom, InfoContainer, TableContainer
 from ..common.structures import RomTable, RamTable
-
-# class ViewNode(object):
-#     """Dummy class to facilitate persistent objects for mapping simple
-#     arbitrary objects to/from items in a `PyDataViewModel`"""
-
-#     def __init__(self, name, parent, data=None):
-#         self._name = name
-#         self._parent = parent
-#         self._data = data
-
-#     def __repr__(self):
-#         return '<ViewNode {}, {}>'.format(
-#             self._name,
-#             repr(self._data) if self._data else 'No Data'
-#         )
-
-#     @property
-#     def Name(self):
-#         return self._name
-
-#     @property
-#     def Parent(self):
-#         return self._parent
-
-#     @property
-#     def Data(self):
-#         return self._data
 
 class OptionalToggleRenderer(dv.DataViewCustomRenderer):
     """Extension of `DataViewToggleRenderer` that optionally omits the checkbox
@@ -193,7 +165,7 @@ class RomViewModel(dv.PyDataViewModel):
             return True
 
         # mark modified tables bold
-        elif isinstance(node, RamTable):
+        elif isinstance(node, RomTable):
             attr.SetBold(node.IsModified)
             return True
 
@@ -222,8 +194,8 @@ class RomViewModel(dv.PyDataViewModel):
 
         # sort ROMs by filepath
         if all(isinstance(x, Rom) for x in nodes):
-            n1 = natsort_key(node1.Path, alg=ns.PATH)
-            n2 = natsort_key(node2.Path, alg=ns.PATH)
+            n1 = natsort_keygen(alg=ns.PATH)(node1.Path)
+            n2 = natsort_keygen(alg=ns.PATH)(node2.Path)
 
         # sort info entries alphabetically
         elif all(isinstance(x, str) for x in nodes):
@@ -307,10 +279,7 @@ class RamViewModel(dv.PyDataViewModel):
         self._livetune = livetune
         self._rom = self._livetune.ROM
 
-        self._allocatable = (lambda x:
-            self._livetune.PendingSize + x.NumBytes
-            <= self._livetune.TotalSize
-        )
+        self._allocatable = lambda x: self._livetune.check_allocatable(x)
 
     def GetColumnCount(self):
         return 3
@@ -325,7 +294,7 @@ class RamViewModel(dv.PyDataViewModel):
 
     def GetChildren(self, item, children):
 
-        if not self._rom:
+        if not self._rom or not self._livetune:
             return 0
 
         usrlvl = UserLevel(self._controller.Preferences['UserLevel'].Value)
@@ -369,36 +338,41 @@ class RamViewModel(dv.PyDataViewModel):
 
             if isinstance(node, TableContainer):
                 allocatable = any([self._allocatable(x) for x in node.values()])
-                allocated = any([x.RamAddress is not None for x in node.values()])
+                has_allocations = any([
+                    x.RomAddress in self._livetune.AllocatedTables
+                    for x in node.values()
+                ])
                 modified = any([
-                    x.RamAddress is not None and x.IsModified
+                    x.RomAddress in self._livetune.AllocatedTables
+                    and x.IsModified
                     for x in node.values()
                 ])
                 attr.SetItalic(not allocatable)
                 attr.SetColour(
                     col_db.Find('BLACK')
-                    if allocated
+                    if has_allocations
                     else col_db.Find('GREY')
                 )
                 attr.SetBold(modified)
 
             if isinstance(node, RamTable):
                 allocatable = self._allocatable(node)
-                allocated = node.RamAddress is not None
+                allocated = node.RomAddress in self._livetune.AllocatedTables
                 pending_allocation = (
                     node.RomAddress in self._livetune.PendingAllocations
                 )
+                active = node.RomAddress in self._livetune.ActiveTables
                 attr.SetItalic(
                     not allocatable and not (pending_allocation or allocated)
                 )
                 attr.SetColour(
                     col_db.Find('GREEN')
-                    if node.Active
+                    if active
                     else col_db.Find('BLACK')
                     if allocated
                     else col_db.Find('GREY')
                 )
-                attr.SetBold(node.RamAddress is not None and node.IsModified)
+                attr.SetBold(allocated and node.IsModified)
 
         return False
 
@@ -466,30 +440,10 @@ class RamViewModel(dv.PyDataViewModel):
         elif isinstance(node, RamTable):
 
             if col == 0:
-                return 1 if (
-                    (
-                        node.RamAddress is not None and
-                        node.RomAddress not in self._livetune.PendingAllocations
-                    )
-                    or
-                    (
-                        node.RamAddress is None and
-                        node.RomAddress in self._livetune.PendingAllocations
-                    )
-                ) else 0
+                return 1 if node.RamAddress is not None else 0
 
             elif col == 1:
-                return 1 if (
-                    (
-                        node.Active and
-                        node.RomAddress not in self._livetune.PendingActivations
-                    )
-                    or
-                    (
-                        not node.Active and
-                        node.RomAddress in self._livetune.PendingActivations
-                    )
-                ) else 0
+                return 1 if node.Active else 0
 
             elif col == 2:
                 return '[{}] {}'.format(node.NumBytes, node.Definition.Name)

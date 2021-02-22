@@ -116,6 +116,8 @@ class bTablePanel ( ScrolledWindow ):
         _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
 
         self._toolbar = wx.ToolBar( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TB_HORIZONTAL )
+        self._t_revert = self._toolbar.AddTool( wx.ID_ANY, u"Revert", wx.ArtProvider.GetBitmap( wx.ART_MISSING_IMAGE, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Revert Changes", u"Revert Changes", None )
+
         self._t_inc = self._toolbar.AddTool( wx.ID_ANY, u"Increment", wx.ArtProvider.GetBitmap( wx.ART_PLUS, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Increment Selection", u"Increment Selection", None )
 
         self._t_dec = self._toolbar.AddTool( wx.ID_ANY, u"Decrement", wx.ArtProvider.GetBitmap( wx.ART_MINUS, wx.ART_TOOLBAR ), wx.NullBitmap, wx.ITEM_NORMAL, u"Decrement Selection", u"Decrement Selection", None )
@@ -158,7 +160,7 @@ class bTablePanel ( ScrolledWindow ):
 
         # Grid
         self._table_grid.CreateGrid( 0, 0 )
-        self._table_grid.EnableEditing( False )
+        self._table_grid.EnableEditing( True )
         self._table_grid.EnableGridLines( True )
         self._table_grid.EnableDragGridSize( False )
         self._table_grid.SetMargins( 0, 0 )
@@ -187,7 +189,7 @@ class bTablePanel ( ScrolledWindow ):
 
         # Grid
         self._x_grid.CreateGrid( 0, 0 )
-        self._x_grid.EnableEditing( False )
+        self._x_grid.EnableEditing( True )
         self._x_grid.EnableGridLines( True )
         self._x_grid.EnableDragGridSize( False )
         self._x_grid.SetMargins( 0, 0 )
@@ -216,7 +218,7 @@ class bTablePanel ( ScrolledWindow ):
 
         # Grid
         self._y_grid.CreateGrid( 0, 0 )
-        self._y_grid.EnableEditing( False )
+        self._y_grid.EnableEditing( True )
         self._y_grid.EnableGridLines( True )
         self._y_grid.EnableDragGridSize( False )
         self._y_grid.SetMargins( 0, 0 )
@@ -251,6 +253,7 @@ class bTablePanel ( ScrolledWindow ):
 
         # Connect Events
         self.Bind( wx.aui.EVT_AUI_PANE_CLOSE, self.OnClose )
+        self.Bind( wx.EVT_TOOL, self.OnRevert, id = self._t_revert.GetId() )
         self.Bind( wx.EVT_TOOL, self.OnIncrement, id = self._t_inc.GetId() )
         self.Bind( wx.EVT_TOOL, self.OnDecrement, id = self._t_dec.GetId() )
         self.Bind( wx.EVT_TOOL, self.OnIncrementRaw, id = self._t_inc_raw.GetId() )
@@ -264,6 +267,7 @@ class bTablePanel ( ScrolledWindow ):
         self.Bind( wx.EVT_TOOL, self.OnROMPopulate, id = self._t_pop_from_ROM.GetId() )
         self.Bind( wx.EVT_TOOL, self.OnRAMPopulate, id = self._t_pop_from_RAM.GetId() )
         self.Bind( wx.EVT_TOOL, self.OnCommit, id = self._t_commit.GetId() )
+        self._table_grid.Bind( wx.grid.EVT_GRID_CELL_CHANGED, self.OnCellChange )
         self._table_grid.Bind( wx.grid.EVT_GRID_RANGE_SELECT, self.OnSelect )
         self._table_grid.Bind( wx.grid.EVT_GRID_SELECT_CELL, self.OnSelect )
         self._table_grid.Bind( wx.EVT_KEY_DOWN, self.OnKeyDown )
@@ -280,6 +284,9 @@ class bTablePanel ( ScrolledWindow ):
 
     # Virtual event handlers, overide them in your derived class
     def OnClose( self, event ):
+        event.Skip()
+
+    def OnRevert( self, event ):
         event.Skip()
 
     def OnIncrement( self, event ):
@@ -319,6 +326,9 @@ class bTablePanel ( ScrolledWindow ):
         event.Skip()
 
     def OnCommit( self, event ):
+        event.Skip()
+
+    def OnCellChange( self, event ):
         event.Skip()
 
     def OnSelect( self, event ):

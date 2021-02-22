@@ -291,3 +291,64 @@ class bLoggerFrame ( BaseFrame ):
         event.Skip()
 
 
+###########################################################################
+## Class bEditDialog
+###########################################################################
+
+class bEditDialog ( wx.Dialog ):
+
+    def __init__( self, parent ):
+        wx.Dialog.__init__ ( self, parent, id = wx.ID_ANY, title = u"Edit Cell Value", pos = wx.DefaultPosition, size = wx.DefaultSize, style = wx.CAPTION|wx.CLOSE_BOX|wx.STAY_ON_TOP )
+
+        self.SetSizeHints( wx.DefaultSize, wx.DefaultSize )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._input = wx.TextCtrl( self, wx.ID_ANY, u"0.0", wx.DefaultPosition, wx.DefaultSize, wx.TE_PROCESS_ENTER )
+        _sizer.Add( self._input, wx.GBPosition( 0, 1 ), wx.GBSpan( 1, 1 ), wx.ALIGN_CENTER_HORIZONTAL|wx.ALL|wx.EXPAND, 5 )
+
+        self._label = wx.StaticText( self, wx.ID_ANY, u"d =", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._label.Wrap( -1 )
+
+        _sizer.Add( self._label, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 1 ), wx.ALIGN_CENTER_VERTICAL|wx.ALIGN_RIGHT|wx.ALL, 5 )
+
+        _button_sizer = wx.StdDialogButtonSizer()
+        self._button_sizerSave = wx.Button( self, wx.ID_SAVE )
+        _button_sizer.AddButton( self._button_sizerSave )
+        self._button_sizerCancel = wx.Button( self, wx.ID_CANCEL )
+        _button_sizer.AddButton( self._button_sizerCancel )
+        _button_sizer.Realize();
+
+        _sizer.Add( _button_sizer, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 2 ), wx.ALL, 2 )
+
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+        self.Centre( wx.BOTH )
+
+        # Connect Events
+        self._input.Bind( wx.EVT_TEXT, self.OnText )
+        self._input.Bind( wx.EVT_TEXT_ENTER, self.OnSave )
+        self._button_sizerCancel.Bind( wx.EVT_BUTTON, self.OnCancel )
+        self._button_sizerSave.Bind( wx.EVT_BUTTON, self.OnSave )
+
+    def __del__( self ):
+        pass
+
+
+    # Virtual event handlers, overide them in your derived class
+    def OnText( self, event ):
+        event.Skip()
+
+    def OnSave( self, event ):
+        event.Skip()
+
+    def OnCancel( self, event ):
+        event.Skip()
+
+
+

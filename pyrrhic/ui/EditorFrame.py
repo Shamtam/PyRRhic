@@ -44,6 +44,7 @@ class EditorFrame(bEditorFrame):
 
         pub.subscribe(self._enable_livetune, 'editor.livetune.enable')
         pub.subscribe(self.OnTogglePane, 'editor.toggle_panel')
+        pub.subscribe(self.toggle_table, 'editor.table.toggle')
         pub.subscribe(self.refresh_tree, 'editor.table.rom.change')
 
         self._save_items = [

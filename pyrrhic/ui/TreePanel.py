@@ -75,7 +75,7 @@ class TreePanel(bTreePanel):
             dvc.Collapse(item) if dvc.IsExpanded(item) else dvc.Expand(item)
 
         elif isinstance(node, RomTable):
-            self.Parent.edit_table(node)
+            pub.sendMessage('editor.table.toggle', table=node)
 
     @property
     def Model(self):

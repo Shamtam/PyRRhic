@@ -294,8 +294,9 @@ class TableDef(object):
 
 class EditorTable(object):
     """Base class for table definition/bytes to UI translation objects"""
-    def __init__(self, parent):
+    def __init__(self, parent, tabledef):
         self._parent = parent
+        self._definition = tabledef
         self._panel = None
 
     def check_val_modified(self, idx1, idx2=0):
@@ -322,10 +323,59 @@ class EditorTable(object):
             self._orig_bytes[idx:idx + elem_size]
         )
 
+    def check_valid_value(self, val):
+        """Returns a boolean indicating whether the given value is valid
+        for this table."""
+
+        # TODO: make this more specific, check min/max, etc.
+
+        dtype = self._definition.Datatype
+        if dtype in [DataType.BLOB, DataType.STATIC]:
+            return False
+        else:
+            try:
+                float(val)
+            except ValueError:
+                return False
+            else:
+                return True
+
+    def _cell_info(self, idx1, idx2):
+        """Returns a `4-tuple` of info for the given indices.
+
+        Returned tuple is (idx, bidx, elem_size, unpack_str) where
+        - `idx` is the `int` or `2-tuple` used to retrieve the cell
+            value from the numpy array returned by the `Values` property
+        - `bidx` is the starting index of the cell value in the raw
+            byte array containing this table's data
+        - `elem_size` is the size of this a cell's data, in bytes
+        - `unpack_str` is a `struct`-style format `str` used to
+            pack/unpack the numeric value into a raw bytes
+        """
+        order = self._definition.ByteOrder
+        dtype = self._definition.Datatype
+
+        border_str = _byte_order_struct_map[order]
+        dtype_str = _dtype_struct_map[dtype]
+        unpack_str = border_str + dtype_str
+        elem_size = _dtype_size_map[dtype]
+
+        # 3D table
+        if self._axes is not None and len(self._axes) == 2:
+            cols = self._axes[0].Definition.Length
+            idx = (idx1, idx2)
+            bidx = (idx1*cols + idx2)*elem_size
+
+        # 1D/2D table
+        else:
+            idx = max(idx1, idx2)
+            bidx = idx*elem_size
+
+        return idx, bidx, elem_size, unpack_str
+
     def step(self, idx1, idx2=0, decrement=False):
         "Increase/decrease the value at the supplied index by one step size"
 
-        order = self._definition.ByteOrder
         dtype = self._definition.Datatype
 
         if dtype in [DataType.BLOB, DataType.STATIC]:
@@ -337,53 +387,98 @@ class EditorTable(object):
         else:
             step = 1
 
-        border_str = _byte_order_struct_map[order]
-        dtype_str = _dtype_struct_map[dtype]
-        unpack_str = border_str + dtype_str
-        elem_size = _dtype_size_map[dtype]
+        idx, bidx, elem_size, unpack_str = self._cell_info(idx1, idx2)
 
-        # 3D table
-        if self._axes is not None and len(self._axes) == 2:
-            cols = self._axes[0].Definition.Length
-            idx = (idx1*cols + idx2)*elem_size
-        # 1D/2D table
-        else:
-            idx = max(idx1, idx2)*elem_size
-
-        val = struct.unpack_from(unpack_str, self._bytes, idx)[0]
+        val = struct.unpack_from(unpack_str, self._bytes, bidx)[0]
         flip = -1 if decrement else 1
         new_val = val + step*flip
 
         if dtype != DataType.FLOAT:
             new_val = bound_int(dtype, new_val)
 
-        self._bytes[idx:idx + elem_size] = struct.pack(unpack_str, new_val)
+        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
 
     def add_raw(self, offs, idx1, idx2=0):
         "Add `offs` to the value stored at the supplied index"
 
-        order = self._definition.ByteOrder
         dtype = self._definition.Datatype
 
         if dtype in [DataType.FLOAT, DataType.STATIC]:
             return
 
-        border_str = _byte_order_struct_map[order]
-        dtype_str = _dtype_struct_map[dtype]
-        unpack_str = border_str + dtype_str
-        elem_size = _dtype_size_map[dtype]
+        idx, bidx, elem_size, unpack_str = self._cell_info(idx1, idx2)
 
-        # 3D table
-        if self._axes is not None and len(self._axes) == 2:
-            cols = self._axes[0].Definition.Length
-            idx = (idx1*cols + idx2)*elem_size
-        # 1D/2D table
-        else:
-            idx = max(idx1, idx2)*elem_size
-
-        val = struct.unpack_from(unpack_str, self.Bytes, idx)[0]
+        val = struct.unpack_from(unpack_str, self.Bytes, bidx)[0]
         new_val = bound_int(dtype, val + offs)
-        self.Bytes[idx:idx + elem_size] = struct.pack(unpack_str, new_val)
+        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
+
+    def set_cell(self, val, idx1, idx2=0):
+        "Set the value of the cell at the supplied index"
+
+        dtype = self._definition.Datatype
+
+        if dtype == DataType.STATIC:
+            return
+
+        idx, bidx, elem_size, unpack_str = self._cell_info(idx1, idx2)
+
+        new_val = (
+            self._definition.Scaling.to_raw(val)
+            if self._definition.Scaling
+            else val
+        )
+
+        if dtype != DataType.FLOAT:
+            new_val = bound_int(dtype, int(new_val))
+
+        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
+
+    def add_cell(self, val, idx1, idx2=0):
+        "Add the given value to the cell at the supplied index"
+
+        dtype = self._definition.Datatype
+
+        if dtype == DataType.STATIC:
+            return
+
+        idx, bidx, elem_size, unpack_str = self._cell_info(idx1, idx2)
+
+        disp_val = self.DisplayValues[idx] + val
+        new_val = (
+            self._definition.Scaling.to_raw(disp_val)
+            if self._definition.Scaling
+            else disp_val
+        )
+
+        if dtype != DataType.FLOAT:
+            new_val = bound_int(dtype, int(new_val))
+
+        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
+
+    def mult_cell(self, val, idx1, idx2=0):
+        "Multiply the cell at the supplied index by the given value"
+
+        dtype = self._definition.Datatype
+
+        if dtype == DataType.STATIC:
+            return
+
+        idx, bidx, elem_size, unpack_str = self._cell_info(idx1, idx2)
+
+        disp_val = val*self.DisplayValues[idx]
+        new_val = (
+            self._definition.Scaling.to_raw(disp_val)
+            if self._definition.Scaling
+            else disp_val
+        )
+
+        if dtype != DataType.FLOAT:
+            new_val = bound_int(dtype, int(new_val))
+
+        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
+
+    def revert(self):
+        raise NotImplementedError
 
     @property
     def Axes(self):
@@ -394,6 +489,10 @@ class EditorTable(object):
         return self._definition
 
     @property
+    def DataType(self):
+        return self._definition.Datatype
+
+    @property
     def OriginalBytes(self):
         "Returns the unmodified raw byte data for this table"
         return self._orig_bytes
@@ -402,14 +501,6 @@ class EditorTable(object):
     def Bytes(self):
         "Returns the raw byte data currently contained by this table"
         return self._bytes
-
-    @property
-    def Values(self):
-        raise NotImplementedError
-
-    @property
-    def DisplayValues(self):
-        raise NotImplementedError
 
     @property
     def PanelTitle(self):
@@ -434,7 +525,7 @@ class EditorTable(object):
 
     @property
     def NumBytes(self):
-        return len(self._orig_bytes)
+        return self._definition.NumBytes
 
     @property
     def Values(self):
@@ -455,9 +546,11 @@ class EditorTable(object):
                 rows = 1
 
             if rows == 1 and cols == 1:
-                shape = (1, 1)
+                shape = (1,)
             elif rows == 1:
-                shape = (1, cols)
+                shape = (cols,)
+            elif cols == 1:
+                shape = (rows,)
             else:
                 shape = (rows, cols)
 
@@ -484,10 +577,8 @@ class EditorTable(object):
 
 class RomTable(EditorTable):
     def __init__(self, parent, tabledef):
-        super(RomTable, self).__init__(parent)
-        self._definition = tabledef
+        super(RomTable, self).__init__(parent, tabledef)
         self._axes = []
-        self._panel = None
 
         self.initialize_bytes()
 
@@ -505,12 +596,20 @@ class RomTable(EditorTable):
     def initialize_bytes(self):
         if self._definition.Datatype != DataType.STATIC:
             addr = self._definition.Address
-            length = self._definition.NumBytes
+            length = self.NumBytes
             self._orig_bytes = self._parent.OriginalBytes[addr:addr + length]
             self._bytes = memoryview(self._parent.Bytes)[addr:addr + length]
         else:
             self._orig_bytes = None
             self._bytes = None
+
+    def revert(self):
+        if self.IsModified:
+            self._bytes[0:] = self._orig_bytes
+
+            if self._axes:
+                for ax in self._axes:
+                    ax.revert()
 
     @property
     def PanelTitle(self):
@@ -528,24 +627,26 @@ class RomTable(EditorTable):
         return modified
 
 class RamTable(EditorTable):
-    def __init__(self, parent, rom_table, raw_bytes=None):
-        super(RamTable, self).__init__(parent)
+    def __init__(self, rom_table):
+        super(RamTable, self).__init__(rom_table.Parent, rom_table.Definition)
         self._rom_table = rom_table
-        self._definition = rom_table.Definition
         self._axes = rom_table.Axes
+
         self._ram_addr = None
+        self._orig_bytes = None
+        self._bytes = None
 
         self._active = False
 
-        # initialize table data by setting original bytes and mutable
-        # bytes to something different (arbitrary). this forces the
-        # table to be marked as modified, which will indicate that the
-        # table data needs to be populated by reading its current state
-        # from RAM upon livetune initialization
-        self.initialize_bytes(
-            orig_bytes=b'\x00'*self._rom_table.Definition.NumBytes,
-            current_bytes=b'\xFF'*self._rom_table.Definition.NumBytes
-        )
+        # # initialize table data by setting original bytes and mutable
+        # # bytes to something different (arbitrary). this forces the
+        # # table to be marked as modified, which will indicate that the
+        # # table data needs to be populated by reading its current state
+        # # from RAM upon livetune initialization
+        # self.initialize_bytes(
+        #     orig_bytes=b'\x00'*self._rom_table.Definition.NumBytes,
+        #     current_bytes=b'\xFF'*self._rom_table.Definition.NumBytes
+        # )
 
     def __repr__(self):
         final_str = '['
@@ -570,27 +671,58 @@ class RamTable(EditorTable):
             self._definition.Category, self._definition.Name, final_str
         )
 
-    def initialize_bytes(self, orig_bytes=None, current_bytes=None):
-        self._orig_bytes = (
-            orig_bytes
-            if (
-                isinstance(orig_bytes, bytes)
-                and len(orig_bytes) == self._rom_table.Definition.NumBytes
-            )
-            else self._rom_table.OriginalBytes
-        )
+    def initialize_bytes(self, byte_view=None):
+        """Initialize the `RamTable` from the given `memoryview`
 
-        self._bytes = bytearray(
-            current_bytes
-            if (
-                isinstance(current_bytes, bytes)
-                and len(current_bytes) == self._rom_table.Definition.NumBytes
-            )
-            else self._orig_bytes
-        )
+        Should be called from a `LiveTuneData` instance when the table
+        is to be allocated or unallocated from the live tuning RAM
+        segment.
+
+        If this table is being allocated, then a `memoryview` should be
+        passed in to the `byte_view` keyword. This `memoryview` should
+        correspond to the mutable byte section of the `LiveTuneData`
+        instance that is assigned to store the raw bytes for this table.
+
+        Otherwise, the table is being unallocated, the `byte_view`
+        keyword should be omitted, which will clear the stored bytes
+        from this `RamTable` instance (marking it as unallocated).
+
+        Keywords [Default]:
+        `byte_view` [`None`]: `memoryview` containing a section of raw
+            bytes that contains the data of this table, or `None` to
+            indicate that this table is not allocated
+        """
+
+        if isinstance(byte_view, memoryview):
+
+            if len(byte_view) != self.NumBytes:
+                raise ValueError((
+                    'Specified `memoryview` has invalid length {}, '
+                    'expecting length {}').format(
+                        len(byte_view), self.NumBytes
+                    )
+                )
+
+            self._orig_bytes = byte_view.tobytes()
+            self._bytes = byte_view
+
+        else:
+            self._orig_bytes = None
+            self._bytes = None
 
     def activate(self, activate=True):
         self._active = activate
+
+    def revert(self):
+        if self.IsModified:
+            self._bytes[0:] = self._orig_bytes
+
+    @property
+    def Bytes(self):
+        if self._bytes is None:
+            return self._rom_table.Bytes
+        else:
+            return self._bytes
 
     @property
     def RomAddress(self):

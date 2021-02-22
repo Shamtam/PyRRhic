@@ -50,6 +50,7 @@ class LoggerFrame(bLoggerFrame):
 
         pub.subscribe(self.push_status, 'logger.status')
         pub.subscribe(self.update_freq, 'logger.freq.updated')
+        pub.subscribe(self.on_connection, 'logger.connection.change')
 
         self.OnRefreshInterfaces()
 
