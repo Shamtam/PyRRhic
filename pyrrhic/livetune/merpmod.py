@@ -51,7 +51,7 @@ class MerpModLiveTune(LiveTuneData):
         self.initialize()
 
     def check_allocatable(self, table):
-        return self.PendingSize + table.NumBytes + 8 <= self.TotalSize
+        return (self.PendingSize + table.NumBytes + 8) <= self.TotalSize
 
     def _refresh_bytes(self):
         """Regenerate the mutable bytes based off the current state"""
@@ -123,7 +123,7 @@ class MerpModLiveTune(LiveTuneData):
 
     def stage_allocation(self, table):
 
-        can_allocate = self.PendingSize + table.NumBytes + 8 <= self.TotalSize
+        can_allocate = self.check_allocatable(table)
         pending = table.RomAddress in self._temp_allocations
         allocated = table.RomAddress in self.AllocatedTables
 
@@ -191,7 +191,7 @@ class MerpModLiveTune(LiveTuneData):
                 start = 8 + num*4
                 end = start + num*4
                 addr = start
-                while addr <= end:
+                while addr < end:
                     mod_bytes[addr] = 0
                     addr += 4
 
@@ -231,7 +231,7 @@ class MerpModLiveTune(LiveTuneData):
             num = self.NumTables
 
             if num == 0:
-                return ()
+                return []
 
             start = 8
             end = start + 4*num
@@ -249,7 +249,7 @@ class MerpModLiveTune(LiveTuneData):
             num = self.NumTables
 
             if num == 0:
-                return ()
+                return []
 
             start = 8 + 4*num
             end = start + 4*num

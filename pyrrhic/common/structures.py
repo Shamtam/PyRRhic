@@ -298,6 +298,7 @@ class EditorTable(object):
         self._parent = parent
         self._definition = tabledef
         self._panel = None
+        self._axes = []
 
     def check_val_modified(self, idx1, idx2=0):
         """Returns a boolean indicating whether the value at the given
@@ -578,7 +579,6 @@ class EditorTable(object):
 class RomTable(EditorTable):
     def __init__(self, parent, tabledef):
         super(RomTable, self).__init__(parent, tabledef)
-        self._axes = []
 
         self.initialize_bytes()
 

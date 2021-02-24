@@ -143,8 +143,11 @@ class TablePanel(bTablePanel):
             for j in range(self._num_cols):
 
                 if self._table.Axes:
+                    has_yaxis = len(self._table.Axes) == 2
+                    idx = (i, j) if has_yaxis else (None, j)
+
                     # set y axis values
-                    if j == 0 and len(self._table.Axes) == 2:
+                    if j == 0 and has_yaxis:
                         ax = self._table.Axes[1]
                         self._set_value(ax, self._y_grid, i, None)
 
@@ -153,8 +156,8 @@ class TablePanel(bTablePanel):
                         ax = self._table.Axes[0]
                         self._set_value(ax, self._x_grid, None, j)
 
-                # set table value
-                self._set_value(self._table, self._table_grid, i, j)
+                    # set table value
+                    self._set_value(self._table, self._table_grid, *idx)
 
         self.Refresh()
 
