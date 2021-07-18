@@ -8,10 +8,12 @@
 ###########################################################################
 
 from wx import ScrolledWindow
+from wx.lib.agw.pygauge import PyGauge
 import wx
 import wx.xrc
 import wx.dataview
 import wx.grid
+import wx.aui
 
 ###########################################################################
 ## Class bConsolePanel
@@ -513,39 +515,41 @@ class bRAMTreePanel ( wx.Panel ):
         _sizer.SetFlexibleDirection( wx.BOTH )
         _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
 
-        self._gauge = wx.Gauge( self, wx.ID_ANY, 100, wx.DefaultPosition, wx.DefaultSize, wx.GA_HORIZONTAL|wx.GA_VERTICAL )
-        self._gauge.SetValue( 0 )
-        _sizer.Add( self._gauge, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 1 ), wx.ALL|wx.EXPAND, 5 )
-
         self._dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES )
         self._dvc.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
 
-        _sizer.Add( self._dvc, wx.GBPosition( 0, 1 ), wx.GBSpan( 1, 1 ), wx.EXPAND, 5 )
+        _sizer.Add( self._dvc, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 1 ), wx.EXPAND, 5 )
+
+        self._gauge = PyGauge( self, wx.ID_ANY, 100, wx.DefaultPosition, wx.DefaultSize, wx.GA_HORIZONTAL )
+        self._gauge.SetValue( 0 )
+        self._gauge.SetMinSize( wx.Size( -1,15 ) )
+
+        _sizer.Add( self._gauge, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 1 ), wx.ALL|wx.EXPAND, 2 )
 
         self._RAM_label = wx.StaticText( self, wx.ID_ANY, u"RAM Usage: ", wx.DefaultPosition, wx.DefaultSize, 0 )
         self._RAM_label.Wrap( -1 )
 
         self._RAM_label.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
 
-        _sizer.Add( self._RAM_label, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 2 ), wx.LEFT|wx.TOP, 5 )
+        _sizer.Add( self._RAM_label, wx.GBPosition( 2, 0 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
 
         self._tables_label = wx.StaticText( self, wx.ID_ANY, u"Live Tables: ", wx.DefaultPosition, wx.DefaultSize, 0 )
         self._tables_label.Wrap( -1 )
 
         self._tables_label.SetFont( wx.Font( 8, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
 
-        _sizer.Add( self._tables_label, wx.GBPosition( 2, 0 ), wx.GBSpan( 1, 2 ), wx.BOTTOM|wx.LEFT, 5 )
+        _sizer.Add( self._tables_label, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 1 ), wx.BOTTOM|wx.LEFT, 5 )
 
         self._pull_but = wx.Button( self, wx.ID_ANY, u"Pull from ECU", wx.DefaultPosition, wx.DefaultSize, 0 )
-        _sizer.Add( self._pull_but, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 2 ), wx.ALL|wx.EXPAND, 5 )
+        _sizer.Add( self._pull_but, wx.GBPosition( 4, 0 ), wx.GBSpan( 1, 1 ), wx.ALL|wx.EXPAND, 5 )
 
         self._push_but = wx.Button( self, wx.ID_ANY, u"Push to ECU", wx.DefaultPosition, wx.DefaultSize, 0 )
         self._push_but.Enable( False )
 
-        _sizer.Add( self._push_but, wx.GBPosition( 4, 0 ), wx.GBSpan( 1, 2 ), wx.ALL|wx.EXPAND, 5 )
+        _sizer.Add( self._push_but, wx.GBPosition( 5, 0 ), wx.GBSpan( 1, 1 ), wx.ALL|wx.EXPAND, 5 )
 
 
-        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableCol( 0 )
         _sizer.AddGrowableRow( 0 )
 
         self.SetSizer( _sizer )
@@ -574,5 +578,599 @@ class bRAMTreePanel ( wx.Panel ):
 
     def OnPushState( self, event ):
         event.Skip()
+
+
+###########################################################################
+## Class bDefPanel
+###########################################################################
+
+class bDefPanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._toolbar = wx.ToolBar( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.TB_FLAT|wx.TB_HORIZONTAL )
+        self._toolbar.Realize()
+
+        _sizer.Add( self._toolbar, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 2 ), wx.EXPAND, 5 )
+
+        self._dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.Size( 200,-1 ), 0 )
+        self._dvc.SetFont( wx.Font( 9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+
+        _sizer.Add( self._dvc, wx.GBPosition( 1, 0 ), wx.GBSpan( 2, 1 ), wx.ALL|wx.EXPAND, 2 )
+
+        self._notebook = wx.Simplebook( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
+
+        _sizer.Add( self._notebook, wx.GBPosition( 1, 1 ), wx.GBSpan( 1, 1 ), wx.EXPAND, 2 )
+
+        self._apply_but = wx.ToggleButton( self, wx.ID_ANY, u"Apply Changes", wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._apply_but, wx.GBPosition( 2, 1 ), wx.GBSpan( 1, 1 ), wx.ALL|wx.EXPAND, 5 )
+
+
+        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableRow( 1 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+        # Connect Events
+        self._dvc.Bind( wx.dataview.EVT_DATAVIEW_SELECTION_CHANGED, self.OnItemSelection, id = wx.ID_ANY )
+
+    def __del__( self ):
+        pass
+
+
+    # Virtual event handlers, overide them in your derived class
+    def OnItemSelection( self, event ):
+        event.Skip()
+
+
+###########################################################################
+## Class bInfoPanel
+###########################################################################
+
+class bInfoPanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( 480,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._id_label = wx.StaticText( self, wx.ID_ANY, u"Identifier", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._id_label.Wrap( -1 )
+
+        _sizer.Add( self._id_label, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 2 ), wx.LEFT|wx.TOP, 5 )
+
+        self._id_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._id_box, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 2 ), wx.BOTTOM|wx.LEFT, 5 )
+
+        self._ecuid_label = wx.StaticText( self, wx.ID_ANY, u"ECU ID", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._ecuid_label.Wrap( -1 )
+
+        _sizer.Add( self._ecuid_label, wx.GBPosition( 0, 2 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._ecuid_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._ecuid_box, wx.GBPosition( 1, 2 ), wx.GBSpan( 1, 1 ), wx.BOTTOM|wx.LEFT, 5 )
+
+        self._address_label = wx.StaticText( self, wx.ID_ANY, u"Calibration ID Address [Hex]", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._address_label.Wrap( -1 )
+
+        _sizer.Add( self._address_label, wx.GBPosition( 0, 3 ), wx.GBSpan( 1, 3 ), wx.LEFT|wx.RIGHT|wx.TOP, 5 )
+
+        self._address_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._address_box, wx.GBPosition( 1, 3 ), wx.GBSpan( 1, 4 ), wx.BOTTOM|wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+        self._calid_label = wx.StaticText( self, wx.ID_ANY, u"Calibration ID", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._calid_label.Wrap( -1 )
+
+        _sizer.Add( self._calid_label, wx.GBPosition( 2, 0 ), wx.GBSpan( 1, 2 ), wx.LEFT|wx.TOP, 5 )
+
+        self._calid_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._calid_box, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 5 ), wx.BOTTOM|wx.EXPAND|wx.LEFT, 5 )
+
+        self._calid_str_radio = wx.RadioButton( self, wx.ID_ANY, u"ASCII", wx.DefaultPosition, wx.DefaultSize, wx.RB_GROUP )
+        self._calid_str_radio.SetValue( True )
+        _sizer.Add( self._calid_str_radio, wx.GBPosition( 3, 5 ), wx.GBSpan( 1, 1 ), wx.ALIGN_CENTER, 5 )
+
+        self._calid_hex_radio = wx.RadioButton( self, wx.ID_ANY, u"Hex", wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._calid_hex_radio, wx.GBPosition( 3, 6 ), wx.GBSpan( 1, 1 ), wx.ALIGN_CENTER_VERTICAL|wx.ALIGN_LEFT, 5 )
+
+        self.m_staticline1 = wx.StaticLine( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_HORIZONTAL )
+        _sizer.Add( self.m_staticline1, wx.GBPosition( 4, 0 ), wx.GBSpan( 1, 7 ), wx.EXPAND |wx.ALL, 5 )
+
+        self._year_label = wx.StaticText( self, wx.ID_ANY, u"Year", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._year_label.Wrap( -1 )
+
+        _sizer.Add( self._year_label, wx.GBPosition( 5, 0 ), wx.GBSpan( 1, 2 ), wx.LEFT|wx.TOP, 5 )
+
+        self._market_label = wx.StaticText( self, wx.ID_ANY, u"Market", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._market_label.Wrap( -1 )
+
+        _sizer.Add( self._market_label, wx.GBPosition( 5, 2 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._make_label = wx.StaticText( self, wx.ID_ANY, u"Make", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._make_label.Wrap( -1 )
+
+        _sizer.Add( self._make_label, wx.GBPosition( 5, 3 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._trans_label = wx.StaticText( self, wx.ID_ANY, u"Transmission", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._trans_label.Wrap( -1 )
+
+        _sizer.Add( self._trans_label, wx.GBPosition( 5, 5 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        _year_cboxChoices = []
+        self._year_cbox = wx.ComboBox( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, _year_cboxChoices, 0 )
+        _sizer.Add( self._year_cbox, wx.GBPosition( 6, 0 ), wx.GBSpan( 1, 2 ), wx.BOTTOM|wx.LEFT, 5 )
+
+        _market_cboxChoices = []
+        self._market_cbox = wx.ComboBox( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, _market_cboxChoices, 0 )
+        _sizer.Add( self._market_cbox, wx.GBPosition( 6, 2 ), wx.GBSpan( 1, 1 ), wx.BOTTOM|wx.LEFT, 5 )
+
+        _make_cboxChoices = []
+        self._make_cbox = wx.ComboBox( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, _make_cboxChoices, 0 )
+        _sizer.Add( self._make_cbox, wx.GBPosition( 6, 3 ), wx.GBSpan( 1, 2 ), wx.BOTTOM|wx.EXPAND|wx.LEFT, 5 )
+
+        _trans_cboxChoices = []
+        self._trans_cbox = wx.ComboBox( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, _trans_cboxChoices, 0 )
+        _sizer.Add( self._trans_cbox, wx.GBPosition( 6, 5 ), wx.GBSpan( 1, 2 ), wx.BOTTOM|wx.LEFT|wx.RIGHT, 5 )
+
+        self._model_label = wx.StaticText( self, wx.ID_ANY, u"Model", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._model_label.Wrap( -1 )
+
+        _sizer.Add( self._model_label, wx.GBPosition( 7, 0 ), wx.GBSpan( 1, 2 ), wx.LEFT|wx.TOP, 5 )
+
+        self._submodel_label = wx.StaticText( self, wx.ID_ANY, u"Submodel", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._submodel_label.Wrap( -1 )
+
+        _sizer.Add( self._submodel_label, wx.GBPosition( 7, 3 ), wx.GBSpan( 1, 3 ), wx.LEFT|wx.TOP, 5 )
+
+        _model_cboxChoices = []
+        self._model_cbox = wx.ComboBox( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, _model_cboxChoices, 0 )
+        _sizer.Add( self._model_cbox, wx.GBPosition( 8, 0 ), wx.GBSpan( 1, 3 ), wx.BOTTOM|wx.EXPAND|wx.LEFT, 5 )
+
+        _submodel_cboxChoices = []
+        self._submodel_cbox = wx.ComboBox( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, _submodel_cboxChoices, 0 )
+        _sizer.Add( self._submodel_cbox, wx.GBPosition( 8, 3 ), wx.GBSpan( 1, 4 ), wx.BOTTOM|wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+        self.m_staticline2 = wx.StaticLine( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_HORIZONTAL )
+        _sizer.Add( self.m_staticline2, wx.GBPosition( 9, 0 ), wx.GBSpan( 1, 7 ), wx.ALIGN_CENTER|wx.EXPAND, 5 )
+
+        self._parents_label = wx.StaticText( self, wx.ID_ANY, u"Parents", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._parents_label.Wrap( -1 )
+
+        _sizer.Add( self._parents_label, wx.GBPosition( 10, 1 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._defs_label = wx.StaticText( self, wx.ID_ANY, u"All Definitions", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._defs_label.Wrap( -1 )
+
+        _sizer.Add( self._defs_label, wx.GBPosition( 10, 4 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._up_but = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self._up_but.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_UP, wx.ART_BUTTON ) )
+        _sizer.Add( self._up_but, wx.GBPosition( 12, 0 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._down_but = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self._down_but.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_DOWN, wx.ART_BUTTON ) )
+        _sizer.Add( self._down_but, wx.GBPosition( 13, 0 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        _parents_lboxChoices = []
+        self._parents_lbox = wx.ListBox( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, _parents_lboxChoices, wx.LB_NEEDED_SB )
+        _sizer.Add( self._parents_lbox, wx.GBPosition( 11, 1 ), wx.GBSpan( 4, 2 ), wx.BOTTOM|wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+        self._inherit_but = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self._inherit_but.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_BACK, wx.ART_BUTTON ) )
+        _sizer.Add( self._inherit_but, wx.GBPosition( 12, 3 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._uninherit_but = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self._uninherit_but.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_FORWARD, wx.ART_BUTTON ) )
+        _sizer.Add( self._uninherit_but, wx.GBPosition( 13, 3 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        _defs_lboxChoices = []
+        self._defs_lbox = wx.ListBox( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, _defs_lboxChoices, wx.LB_ALWAYS_SB|wx.LB_SORT )
+        _sizer.Add( self._defs_lbox, wx.GBPosition( 11, 4 ), wx.GBSpan( 4, 3 ), wx.BOTTOM|wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+
+        _sizer.AddGrowableCol( 0 )
+        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableCol( 2 )
+        _sizer.AddGrowableCol( 3 )
+        _sizer.AddGrowableCol( 4 )
+        _sizer.AddGrowableCol( 5 )
+        _sizer.AddGrowableCol( 6 )
+        _sizer.AddGrowableRow( 11 )
+        _sizer.AddGrowableRow( 14 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+
+    def __del__( self ):
+        pass
+
+
+###########################################################################
+## Class bScalingPanel
+###########################################################################
+
+class bScalingPanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._id_label = wx.StaticText( self, wx.ID_ANY, u"Identifier", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._id_label.Wrap( -1 )
+
+        _sizer.Add( self._id_label, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 3 ), wx.LEFT|wx.TOP, 5 )
+
+        self._units_label = wx.StaticText( self, wx.ID_ANY, u"Units", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._units_label.Wrap( -1 )
+
+        _sizer.Add( self._units_label, wx.GBPosition( 0, 3 ), wx.GBSpan( 1, 4 ), wx.LEFT|wx.TOP, 5 )
+
+        self._id_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0|wx.TAB_TRAVERSAL )
+        _sizer.Add( self._id_box, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 3 ), wx.BOTTOM|wx.EXPAND|wx.LEFT, 5 )
+
+        self._units_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0|wx.TAB_TRAVERSAL )
+        _sizer.Add( self._units_box, wx.GBPosition( 1, 3 ), wx.GBSpan( 1, 3 ), wx.BOTTOM|wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+        self._expr_label = wx.StaticText( self, wx.ID_ANY, u"Raw-to-display Expression", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._expr_label.Wrap( -1 )
+
+        _sizer.Add( self._expr_label, wx.GBPosition( 2, 0 ), wx.GBSpan( 1, 3 ), wx.LEFT|wx.TOP, 5 )
+
+        self._func_label = wx.StaticText( self, wx.ID_ANY, u"f(x) = ", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._func_label.Wrap( -1 )
+
+        self._func_label.SetFont( wx.Font( wx.NORMAL_FONT.GetPointSize(), wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, False, wx.EmptyString ) )
+
+        _sizer.Add( self._func_label, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 1 ), wx.ALIGN_CENTER_VERTICAL|wx.ALIGN_RIGHT|wx.BOTTOM|wx.LEFT, 5 )
+
+        self._expr_box = wx.TextCtrl( self, wx.ID_ANY, u"x", wx.DefaultPosition, wx.DefaultSize, 0|wx.TAB_TRAVERSAL )
+        self._expr_box.SetFont( wx.Font( wx.NORMAL_FONT.GetPointSize(), wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
+
+        _sizer.Add( self._expr_box, wx.GBPosition( 3, 1 ), wx.GBSpan( 1, 5 ), wx.BOTTOM|wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+        self._min_label = wx.StaticText( self, wx.ID_ANY, u"Minimum", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._min_label.Wrap( -1 )
+
+        _sizer.Add( self._min_label, wx.GBPosition( 4, 0 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._max_label = wx.StaticText( self, wx.ID_ANY, u"Maximum", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._max_label.Wrap( -1 )
+
+        _sizer.Add( self._max_label, wx.GBPosition( 4, 2 ), wx.GBSpan( 1, 1 ), wx.TOP, 5 )
+
+        self._inc_label = wx.StaticText( self, wx.ID_ANY, u"Step Size", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._inc_label.Wrap( -1 )
+
+        _sizer.Add( self._inc_label, wx.GBPosition( 4, 4 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._min_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0|wx.TAB_TRAVERSAL )
+        _sizer.Add( self._min_box, wx.GBPosition( 5, 0 ), wx.GBSpan( 1, 2 ), wx.BOTTOM|wx.LEFT, 5 )
+
+        self._max_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0|wx.TAB_TRAVERSAL )
+        _sizer.Add( self._max_box, wx.GBPosition( 5, 2 ), wx.GBSpan( 1, 2 ), wx.BOTTOM|wx.LEFT, 5 )
+
+        self._inc_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0|wx.TAB_TRAVERSAL )
+        _sizer.Add( self._inc_box, wx.GBPosition( 5, 4 ), wx.GBSpan( 1, 2 ), wx.BOTTOM|wx.LEFT|wx.RIGHT, 5 )
+
+        self.m_staticline1 = wx.StaticLine( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_HORIZONTAL )
+        _sizer.Add( self.m_staticline1, wx.GBPosition( 6, 0 ), wx.GBSpan( 1, 6 ), wx.EXPAND |wx.ALL, 5 )
+
+        self._disp_format_label = wx.StaticText( self, wx.ID_ANY, u"Display Formatting", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._disp_format_label.Wrap( -1 )
+
+        self._disp_format_label.SetFont( wx.Font( wx.NORMAL_FONT.GetPointSize(), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, False, wx.EmptyString ) )
+
+        _sizer.Add( self._disp_format_label, wx.GBPosition( 7, 0 ), wx.GBSpan( 1, 4 ), wx.BOTTOM|wx.LEFT, 5 )
+
+        self._pad_jog = wx.SpinCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 75,-1 ), wx.ALIGN_RIGHT|wx.SP_ARROW_KEYS|wx.TAB_TRAVERSAL, 0, 10, 0 )
+        _sizer.Add( self._pad_jog, wx.GBPosition( 8, 0 ), wx.GBSpan( 1, 1 ), wx.LEFT, 5 )
+
+        self._precision_jog = wx.SpinCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.Size( 75,-1 ), wx.ALIGN_RIGHT|wx.SP_ARROW_KEYS|wx.TAB_TRAVERSAL, 0, 10, 6 )
+        _sizer.Add( self._precision_jog, wx.GBPosition( 8, 1 ), wx.GBSpan( 1, 2 ), wx.BOTTOM|wx.LEFT, 5 )
+
+        self._float_rbut = wx.RadioButton( self, wx.ID_ANY, u"Float", wx.DefaultPosition, wx.DefaultSize, wx.RB_GROUP )
+        self._float_rbut.SetValue( True )
+        _sizer.Add( self._float_rbut, wx.GBPosition( 8, 3 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._int_rbut = wx.RadioButton( self, wx.ID_ANY, u"Integer", wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._int_rbut, wx.GBPosition( 8, 4 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._hex_rbut = wx.RadioButton( self, wx.ID_ANY, u"Hex", wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._hex_rbut, wx.GBPosition( 8, 5 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._pad_label = wx.StaticText( self, wx.ID_ANY, u"Padding", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._pad_label.Wrap( -1 )
+
+        _sizer.Add( self._pad_label, wx.GBPosition( 9, 0 ), wx.GBSpan( 1, 1 ), wx.ALIGN_CENTER_HORIZONTAL|wx.ALIGN_RIGHT|wx.LEFT, 5 )
+
+        self._precision_label = wx.StaticText( self, wx.ID_ANY, u"Precision", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._precision_label.Wrap( -1 )
+
+        _sizer.Add( self._precision_label, wx.GBPosition( 9, 1 ), wx.GBSpan( 1, 2 ), wx.ALIGN_CENTER_HORIZONTAL|wx.LEFT, 5 )
+
+
+        _sizer.Add( ( 0, 0 ), wx.GBPosition( 10, 0 ), wx.GBSpan( 1, 8 ), wx.EXPAND, 5 )
+
+
+        _sizer.AddGrowableRow( 10 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+    def __del__( self ):
+        pass
+
+
+###########################################################################
+## Class bTablePanel
+###########################################################################
+
+class bTablePanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._name_label = wx.StaticText( self, wx.ID_ANY, u"Name", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._name_label.Wrap( -1 )
+
+        _sizer.Add( self._name_label, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._datatype_label = wx.StaticText( self, wx.ID_ANY, u"Datatype", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._datatype_label.Wrap( -1 )
+
+        _sizer.Add( self._datatype_label, wx.GBPosition( 0, 1 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._level_label = wx.StaticText( self, wx.ID_ANY, u"User Level", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
+        self._level_label.Wrap( -1 )
+
+        _sizer.Add( self._level_label, wx.GBPosition( 0, 2 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._name_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0|wx.TAB_TRAVERSAL )
+        _sizer.Add( self._name_box, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 1 ), wx.BOTTOM|wx.EXPAND|wx.LEFT, 5 )
+
+        _datatype_choiceChoices = []
+        self._datatype_choice = wx.Choice( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, _datatype_choiceChoices, 0 )
+        self._datatype_choice.SetSelection( 0 )
+        _sizer.Add( self._datatype_choice, wx.GBPosition( 1, 1 ), wx.GBSpan( 1, 1 ), wx.BOTTOM|wx.LEFT, 5 )
+
+        _level_choiceChoices = []
+        self._level_choice = wx.Choice( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, _level_choiceChoices, 0 )
+        self._level_choice.SetSelection( 0 )
+        _sizer.Add( self._level_choice, wx.GBPosition( 1, 2 ), wx.GBSpan( 1, 1 ), wx.BOTTOM|wx.LEFT|wx.RIGHT, 5 )
+
+        self._notebook = wx.Simplebook( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
+
+        _sizer.Add( self._notebook, wx.GBPosition( 2, 0 ), wx.GBSpan( 1, 3 ), wx.EXPAND |wx.ALL, 5 )
+
+        self._desc_label = wx.StaticText( self, wx.ID_ANY, u"Description", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._desc_label.Wrap( -1 )
+
+        _sizer.Add( self._desc_label, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._desc_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wx.TE_MULTILINE|wx.TE_WORDWRAP )
+        _sizer.Add( self._desc_box, wx.GBPosition( 4, 0 ), wx.GBSpan( 1, 3 ), wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+
+        _sizer.AddGrowableCol( 0 )
+        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableCol( 2 )
+        _sizer.AddGrowableRow( 2 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+    def __del__( self ):
+        pass
+
+
+###########################################################################
+## Class bStdTablePanel
+###########################################################################
+
+class bStdTablePanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._addr_label = wx.StaticText( self, wx.ID_ANY, u"Address [hex]", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._addr_label.Wrap( -1 )
+
+        _sizer.Add( self._addr_label, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 4 ), wx.LEFT|wx.TOP, 5 )
+
+        self._addr_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._addr_box, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 5 ), wx.BOTTOM|wx.EXPAND|wx.LEFT, 5 )
+
+        self.m_staticline2 = wx.StaticLine( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_HORIZONTAL )
+        _sizer.Add( self.m_staticline2, wx.GBPosition( 2, 0 ), wx.GBSpan( 1, 7 ), wx.ALIGN_CENTER|wx.EXPAND, 5 )
+
+        self._scaling_label = wx.StaticText( self, wx.ID_ANY, u"Scaling Selection", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._scaling_label.Wrap( -1 )
+
+        self._scaling_label.SetFont( wx.Font( wx.NORMAL_FONT.GetPointSize(), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, False, wx.EmptyString ) )
+
+        _sizer.Add( self._scaling_label, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 4 ), wx.ALL, 5 )
+
+        self._associated_label = wx.StaticText( self, wx.ID_ANY, u"Associated Scalings", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._associated_label.Wrap( -1 )
+
+        _sizer.Add( self._associated_label, wx.GBPosition( 4, 1 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._all_label = wx.StaticText( self, wx.ID_ANY, u"All Scalings", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._all_label.Wrap( -1 )
+
+        _sizer.Add( self._all_label, wx.GBPosition( 4, 4 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._up_but = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self._up_but.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_UP, wx.ART_BUTTON ) )
+        _sizer.Add( self._up_but, wx.GBPosition( 6, 0 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._down_but = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self._down_but.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_DOWN, wx.ART_BUTTON ) )
+        _sizer.Add( self._down_but, wx.GBPosition( 7, 0 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        _parents_lboxChoices = []
+        self._parents_lbox = wx.ListBox( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, _parents_lboxChoices, wx.LB_NEEDED_SB )
+        _sizer.Add( self._parents_lbox, wx.GBPosition( 5, 1 ), wx.GBSpan( 4, 1 ), wx.BOTTOM|wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+        self._inherit_but = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self._inherit_but.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_BACK, wx.ART_BUTTON ) )
+        _sizer.Add( self._inherit_but, wx.GBPosition( 6, 2 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._uninherit_but = wx.BitmapButton( self, wx.ID_ANY, wx.NullBitmap, wx.DefaultPosition, wx.DefaultSize, wx.BU_AUTODRAW|0 )
+
+        self._uninherit_but.SetBitmap( wx.ArtProvider.GetBitmap( wx.ART_GO_FORWARD, wx.ART_BUTTON ) )
+        _sizer.Add( self._uninherit_but, wx.GBPosition( 7, 2 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        _defs_lboxChoices = []
+        self._defs_lbox = wx.ListBox( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, _defs_lboxChoices, wx.LB_ALWAYS_SB|wx.LB_SORT )
+        _sizer.Add( self._defs_lbox, wx.GBPosition( 5, 4 ), wx.GBSpan( 4, 1 ), wx.BOTTOM|wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+
+        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableCol( 3 )
+        _sizer.AddGrowableRow( 5 )
+        _sizer.AddGrowableRow( 8 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+    def __del__( self ):
+        pass
+
+
+###########################################################################
+## Class bBlobTablePanel
+###########################################################################
+
+class bBlobTablePanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._addr_label = wx.StaticText( self, wx.ID_ANY, u"Address [hex]", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._addr_label.Wrap( -1 )
+
+        _sizer.Add( self._addr_label, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 1 ), wx.LEFT|wx.TOP, 5 )
+
+        self._addr_box = wx.TextCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, 0 )
+        _sizer.Add( self._addr_box, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 1 ), wx.BOTTOM|wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+        self.m_staticline2 = wx.StaticLine( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.LI_HORIZONTAL )
+        _sizer.Add( self.m_staticline2, wx.GBPosition( 2, 0 ), wx.GBSpan( 1, 1 ), wx.ALIGN_CENTER|wx.EXPAND, 5 )
+
+        self._blob_label = wx.StaticText( self, wx.ID_ANY, u"Mapping", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._blob_label.Wrap( -1 )
+
+        self._blob_label.SetFont( wx.Font( wx.NORMAL_FONT.GetPointSize(), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, False, wx.EmptyString ) )
+
+        _sizer.Add( self._blob_label, wx.GBPosition( 3, 0 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._dvc = wx.dataview.DataViewListCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_HORIZ_RULES|wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES|wx.dataview.DV_VERT_RULES )
+        _sizer.Add( self._dvc, wx.GBPosition( 4, 0 ), wx.GBSpan( 1, 1 ), wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+
+        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableCol( 3 )
+        _sizer.AddGrowableRow( 5 )
+        _sizer.AddGrowableRow( 8 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+    def __del__( self ):
+        pass
+
+
+###########################################################################
+## Class bStaticTablePanel
+###########################################################################
+
+class bStaticTablePanel ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( -1,-1 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        _sizer = wx.GridBagSizer( 0, 0 )
+        _sizer.SetFlexibleDirection( wx.BOTH )
+        _sizer.SetNonFlexibleGrowMode( wx.FLEX_GROWMODE_SPECIFIED )
+
+        self._blob_label = wx.StaticText( self, wx.ID_ANY, u"Values", wx.DefaultPosition, wx.DefaultSize, 0 )
+        self._blob_label.Wrap( -1 )
+
+        self._blob_label.SetFont( wx.Font( wx.NORMAL_FONT.GetPointSize(), wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD, False, wx.EmptyString ) )
+
+        _sizer.Add( self._blob_label, wx.GBPosition( 0, 0 ), wx.GBSpan( 1, 1 ), wx.ALL, 5 )
+
+        self._dvc = wx.dataview.DataViewListCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, wx.dataview.DV_HORIZ_RULES|wx.dataview.DV_NO_HEADER|wx.dataview.DV_ROW_LINES|wx.dataview.DV_VERT_RULES )
+        _sizer.Add( self._dvc, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 1 ), wx.EXPAND|wx.LEFT|wx.RIGHT, 5 )
+
+
+        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableCol( 3 )
+        _sizer.AddGrowableRow( 5 )
+        _sizer.AddGrowableRow( 8 )
+
+        self.SetSizer( _sizer )
+        self.Layout()
+        _sizer.Fit( self )
+
+    def __del__( self ):
+        pass
+
+
+###########################################################################
+## Class dummy_AUI
+###########################################################################
+
+class dummy_AUI ( wx.Panel ):
+
+    def __init__( self, parent, id = wx.ID_ANY, pos = wx.DefaultPosition, size = wx.Size( 500,300 ), style = wx.TAB_TRAVERSAL, name = wx.EmptyString ):
+        wx.Panel.__init__ ( self, parent, id = id, pos = pos, size = size, style = style, name = name )
+
+        self.m_mgr = wx.aui.AuiManager()
+        self.m_mgr.SetManagedWindow( self )
+        self.m_mgr.SetFlags(wx.aui.AUI_MGR_DEFAULT)
+
+
+        self.m_mgr.Update()
+
+    def __del__( self ):
+        self.m_mgr.UnInit()
+
 
 

@@ -20,9 +20,19 @@ from natsort import natsort_key, natsort_keygen, ns
 from pubsub import pub
 from wx import dataview as dv
 
+from ..common.definitions import ROMDefinition, EditorDef, LoggerDef
 from ..common.enums import UserLevel
-from ..common.rom import Rom, InfoContainer, TableContainer
-from ..common.structures import RomTable, RamTable
+from ..common.helpers import (
+    CategoryContainer,
+    Container,
+    LogParamContainer,
+    ScalingContainer,
+    TableContainer,
+    InfoContainer,
+)
+from ..common.rom import Rom
+from ..common.structures import Scaling, TableDef, RomTable, RamTable
+
 
 class OptionalToggleRenderer(dv.DataViewCustomRenderer):
     """Extension of `DataViewToggleRenderer` that optionally omits the checkbox
@@ -31,7 +41,7 @@ class OptionalToggleRenderer(dv.DataViewCustomRenderer):
     """
 
     def __init__(self, **kw):
-        kw['varianttype'] = 'long'
+        kw["varianttype"] = "long"
         dv.DataViewCustomRenderer.__init__(self, **kw)
         self._value = -1
 
@@ -60,7 +70,7 @@ class OptionalToggleRenderer(dv.DataViewCustomRenderer):
                 parent,
                 dc,
                 wx.Rect(rect.GetTopLeft(), wx.Size(self._size, self._size)),
-                wx.CONTROL_CHECKED if self._value else wx.CONTROL_CURRENT
+                wx.CONTROL_CHECKED if self._value else wx.CONTROL_CURRENT,
             )
         return True
 
@@ -78,10 +88,10 @@ class OptionalToggleRenderer(dv.DataViewCustomRenderer):
     def Size(self):
         return self._size
 
-class RomViewModel(dv.PyDataViewModel):
 
+class RomViewModel(dv.PyDataViewModel):
     def __init__(self, controller):
-        super(RomViewModel, self).__init__()
+        super().__init__()
         self._controller = controller
         self._roms = controller.LoadedROMs
 
@@ -89,11 +99,11 @@ class RomViewModel(dv.PyDataViewModel):
         return 1
 
     def GetColumnType(self, col):
-        return 'string'
+        return "string"
 
     def GetChildren(self, item, children):
 
-        usrlvl = UserLevel(self._controller.Preferences['UserLevel'].Value)
+        usrlvl = UserLevel(self._controller.Preferences["UserLevel"].Value)
 
         # root node, return all ROMs
         if not item:
@@ -119,10 +129,11 @@ class RomViewModel(dv.PyDataViewModel):
                 # only append category if some of its tables fall within
                 # the currently selected user level
                 if not all(
-                    [usrlvl.value < x.Definition.Level.value  for x in tables]
+                    [usrlvl.value < x.Definition.Level.value for x in tables]
                 ):
                     categories.append(self.ObjectToItem(container))
-            for x in categories: children.append(x)
+            for x in categories:
+                children.append(x)
 
             return len(categories) + 1
 
@@ -130,7 +141,7 @@ class RomViewModel(dv.PyDataViewModel):
         elif isinstance(node, InfoContainer):
 
             for k, v in node.items():
-                children.append(self.ObjectToItem('{}: {}'.format(k, v)))
+                children.append(self.ObjectToItem("{}: {}".format(k, v)))
             return len(node)
 
         # category node
@@ -159,9 +170,7 @@ class RomViewModel(dv.PyDataViewModel):
 
         # node is a category
         elif isinstance(node, TableContainer):
-            attr.SetBold(
-                any([x.IsModified for x in node.values()])
-            )
+            attr.SetBold(any([x.IsModified for x in node.values()]))
             return True
 
         # mark modified tables bold
@@ -180,7 +189,8 @@ class RomViewModel(dv.PyDataViewModel):
         node = self.ItemToObject(item)
 
         return (
-            True if isinstance(node, (Rom, InfoContainer, TableContainer))
+            True
+            if isinstance(node, (Rom, InfoContainer, TableContainer))
             else False
         )
 
@@ -241,7 +251,7 @@ class RomViewModel(dv.PyDataViewModel):
             parent = self.ObjectToItem(rom.Tables[category])
         elif isinstance(node, str):
             for rom in self._roms:
-                if node in ['{}: {}'.format(k, v) for k, v in rom.Info]:
+                if node in ["{}: {}".format(k, v) for k, v in rom.Info]:
                     parent = rom.Info
                     break
 
@@ -256,12 +266,9 @@ class RomViewModel(dv.PyDataViewModel):
         node = self.ItemToObject(item)
 
         if isinstance(node, Rom):
-            return '{} ({})'.format(
-                os.path.basename(node.Path),
-                node.Path
-            )
+            return "{} ({})".format(os.path.basename(node.Path), node.Path)
         elif isinstance(node, InfoContainer):
-            return 'Info'
+            return "Info"
         elif isinstance(node, TableContainer):
             return node.Name
         elif isinstance(node, RomTable):
@@ -271,10 +278,10 @@ class RomViewModel(dv.PyDataViewModel):
 
         return repr(node)
 
-class RamViewModel(dv.PyDataViewModel):
 
+class RamViewModel(dv.PyDataViewModel):
     def __init__(self, controller, livetune):
-        super(RamViewModel, self).__init__()
+        super().__init__()
         self._controller = controller
         self._livetune = livetune
         self._rom = self._livetune.ROM
@@ -286,9 +293,9 @@ class RamViewModel(dv.PyDataViewModel):
 
     def GetColumnType(self, col):
         _col_map = {
-            0: 'bool',      # allocation togglebox
-            0: 'bool',      # activation togglebox
-            1: 'string',    # name
+            0: "bool",  # allocation togglebox
+            0: "bool",  # activation togglebox
+            1: "string",  # name
         }
         return _col_map[col]
 
@@ -297,7 +304,7 @@ class RamViewModel(dv.PyDataViewModel):
         if not self._rom or not self._livetune:
             return 0
 
-        usrlvl = UserLevel(self._controller.Preferences['UserLevel'].Value)
+        usrlvl = UserLevel(self._controller.Preferences["UserLevel"].Value)
 
         # root node, add table categories
         if not item:
@@ -310,10 +317,11 @@ class RamViewModel(dv.PyDataViewModel):
                 # only append category if some of its tables fall within
                 # the currently selected user level
                 if not all(
-                    [usrlvl.value < x.Definition.Level.value  for x in tables]
+                    [usrlvl.value < x.Definition.Level.value for x in tables]
                 ):
                     categories.append(self.ObjectToItem(container))
-            for x in categories: children.append(x)
+            for x in categories:
+                children.append(x)
 
             return len(categories)
 
@@ -337,21 +345,27 @@ class RamViewModel(dv.PyDataViewModel):
             col_db = wx.ColourDatabase()
 
             if isinstance(node, TableContainer):
-                allocatable = any([self._allocatable(x) for x in node.values()])
-                has_allocations = any([
-                    x.RomAddress in self._livetune.AllocatedTables
-                    for x in node.values()
-                ])
-                modified = any([
-                    x.RomAddress in self._livetune.AllocatedTables
-                    and x.IsModified
-                    for x in node.values()
-                ])
+                allocatable = any(
+                    [self._allocatable(x) for x in node.values()]
+                )
+                has_allocations = any(
+                    [
+                        x.RomAddress in self._livetune.AllocatedTables
+                        for x in node.values()
+                    ]
+                )
+                modified = any(
+                    [
+                        x.RomAddress in self._livetune.AllocatedTables
+                        and x.IsModified
+                        for x in node.values()
+                    ]
+                )
                 attr.SetItalic(not allocatable)
                 attr.SetColour(
-                    col_db.Find('BLACK')
+                    col_db.Find("BLACK")
                     if has_allocations
-                    else col_db.Find('GREY')
+                    else col_db.Find("GREY")
                 )
                 attr.SetBold(modified)
 
@@ -366,11 +380,11 @@ class RamViewModel(dv.PyDataViewModel):
                     not allocatable and not (pending_allocation or allocated)
                 )
                 attr.SetColour(
-                    col_db.Find('GREEN')
+                    col_db.Find("GREEN")
                     if active
-                    else col_db.Find('BLACK')
+                    else col_db.Find("BLACK")
                     if allocated
-                    else col_db.Find('GREY')
+                    else col_db.Find("GREY")
                 )
                 attr.SetBold(allocated and node.IsModified)
 
@@ -384,10 +398,7 @@ class RamViewModel(dv.PyDataViewModel):
 
         node = self.ItemToObject(item)
 
-        return (
-            True if isinstance(node, TableContainer)
-            else False
-        )
+        return True if isinstance(node, TableContainer) else False
 
     def HasDefaultCompare(self):
         return True
@@ -446,9 +457,9 @@ class RamViewModel(dv.PyDataViewModel):
                 return 1 if node.Active else 0
 
             elif col == 2:
-                return '[{}] {}'.format(node.NumBytes, node.Definition.Name)
+                return "[{}] {}".format(node.NumBytes, node.Definition.Name)
 
-        return ''
+        return ""
 
     def SetValue(self, value, item, col):
         if col in [0, 1]:
@@ -465,25 +476,225 @@ class RamViewModel(dv.PyDataViewModel):
                 else:
                     return
 
-                pub.sendMessage('editor.table.ram.change')
+                pub.sendMessage("editor.table.ram.change")
 
         return True
 
+
+class DefViewModel(dv.PyDataViewModel):
+    """``wx.dv.PyDataViewModel`` for :class:`.ROMDefinition` instances."""
+
+    def __init__(self, defs):
+        super().__init__()
+        self._defs = defs
+
+    def GetColumnCount(self):
+        return 1
+
+    def GetColumnType(self, col):
+        return "string"
+
+    def GetChildren(self, item, children):
+
+        # root node, return all definitions
+        if not item:
+            for defn in self._defs.values():
+                children.append(self.ObjectToItem(defn))
+            return len(self._defs)
+
+        node = self.ItemToObject(item)
+
+        # ROM node, return info and table categories
+        if isinstance(node, ROMDefinition):
+
+            out_nodes = []
+
+            if node.editor_def:
+                out_nodes.append(node.editor_def)
+
+            if node.logger_def:
+                out_nodes.append(node.logger_def)
+
+            if node.scalings:
+                out_nodes.append(node.scalings)
+
+            for x in out_nodes:
+                children.append(self.ObjectToItem(x))
+
+            return len(out_nodes)
+
+        elif isinstance(node, EditorDef):
+
+            # generate table nodes
+            children.append(self.ObjectToItem(node.Tables))
+            return 1
+
+        elif isinstance(node, LoggerDef):
+            # generate parameter, switch, and DTC nodes
+            children.append(self.ObjectToItem(node.Parameters))
+            children.append(self.ObjectToItem(node.Switches))
+            children.append(self.ObjectToItem(node.DTCodes))
+            return 3
+
+        elif isinstance(
+            node,
+            (
+                ScalingContainer,
+                CategoryContainer,
+                TableContainer,
+                LogParamContainer,
+            ),
+        ):
+            for x in node.values():
+                children.append(self.ObjectToItem(x))
+            return len(node)
+
+        return 0
+
+    def GetAttr(self, item, col, attr):
+        # if not item:
+        #     return False
+
+        # node = self.ItemToObject(item)
+
+        # if isinstance(node, Rom):
+        #     attr.SetItalic(True)
+        #     attr.SetBold(node.IsModified)
+        #     return True
+
+        # # node is an info entry
+        # elif isinstance(node, str):
+        #     attr.SetItalic(True)
+        #     return True
+
+        # # node is a category
+        # elif isinstance(node, TableContainer):
+        #     attr.SetBold(any([x.IsModified for x in node.values()]))
+        #     return True
+
+        # # mark modified tables bold
+        # elif isinstance(node, RomTable):
+        #     attr.SetBold(node.IsModified)
+        #     return True
+
+        return False
+
+    def IsContainer(self, item):
+
+        # root is a container
+        if not item:
+            return True
+
+        node = self.ItemToObject(item)
+
+        return (
+            True
+            if isinstance(
+                node, (ROMDefinition, EditorDef, LoggerDef, Container)
+            )
+            else False
+        )
+
+    def HasDefaultCompare(self):
+        return True
+
+    def Compare(self, item1, item2, column, ascending):
+        node1 = self.ItemToObject(item1)
+        node2 = self.ItemToObject(item2)
+        nodes = [node1, node2]
+
+        # sort ROMDefinitions by editor/logger ids
+        if all(isinstance(x, ROMDefinition) for x in nodes):
+            if all([x.editor_def is not None for x in nodes]):
+                n1 = natsort_key(node1.editor_def.Identifier)
+                n2 = natsort_key(node2.editor_def.Identifier)
+            elif all([x.logger_def is not None for x in nodes]):
+                n1 = natsort_key(node1.logger_def.Identifier)
+                n2 = natsort_key(node2.logger_def.Identifier)
+
+            # placeholder
+            else:
+                return 1 if ascending == (node1.logger_def is None) else -1
+
+        # sort categories alphabetically
+        elif all(isinstance(x, Container) for x in nodes):
+            n1 = natsort_key(node1.name)
+            n2 = natsort_key(node2.name)
+
+        # differing node types, sort in particular order
+        elif type(node1).__name__ != type(node2).__name__:
+            _order_map = {
+                "ROMDefinition": 1,
+                "EditorDef": 2,
+                "LoggerDef": 3,
+                "ScalingContainer": 4,
+                "TableCategoryContainer": 5,
+                "TableContainer": 6,
+                "Scaling": 7,
+                "TableDef": 8,
+            }
+            n1 = _order_map.get(type(node1).__name__, -1)
+            n2 = _order_map.get(type(node2).__name__, -1)
+
+        else:
+            return 0
+
+        return 1 if ascending == (n1 > n2) else -1
+
+    def GetParent(self, item):
+
+        # root has no parent
+        if not item:
+            return dv.NullDataViewItem
+
+        node = self.ItemToObject(item)
+        parent = dv.NullDataViewItem
+
+        if isinstance(node, (Container, Scaling, TableDef)):
+            parent = self.ObjectToItem(node.parent)
+
+        return parent
+
+    def HasValue(self, item, col):
+        return col == 0
+
+    def GetValue(self, item, col):
+        assert col == 0, "Unexpected column for RomViewModel"
+
+        node = self.ItemToObject(item)
+
+        if isinstance(node, ROMDefinition):
+            return "{} / {}".format(
+                node.editor_def.Identifier if node.editor_def else "-",
+                node.logger_def.Identifier if node.logger_def else "-",
+            )
+
+        elif isinstance(node, (Container, Scaling, TableDef)):
+            return node.name
+
+        elif isinstance(node, EditorDef):
+            return "Editor Definitions"
+
+        elif isinstance(node, LoggerDef):
+            return "Logger Definitions"
+
+        return repr(node)
+
+
 # TODO: update LoggerDef/viewmodel to use `Container` instead of tuples
 class TranslatorViewModel(dv.PyDataViewModel):
-
     def __init__(self, translator):
-        super(TranslatorViewModel, self).__init__()
+        super().__init__()
         self._translator = translator
 
     def GetColumnCount(self):
-        return 3 # TODO: add more columns (scaling? what else?)
+        return 3  # TODO: add more columns (scaling? what else?)
 
     def GetColumnType(self, col):
         _col_map = {
-            0: 'bool',      # enable/disable togglebox
-            1: 'string',    # identifier
-            2: 'string',    # name
+            0: "bool",  # enable/disable togglebox
+            1: "string",  # identifier
+            2: "string",  # name
         }
         return _col_map[col]
 
@@ -495,15 +706,13 @@ class TranslatorViewModel(dv.PyDataViewModel):
         # root node, add param categories
         if not item:
 
-            children.append(self.ObjectToItem(
-                ('params', None, d.AllParameters)
-            ))
-            children.append(self.ObjectToItem(
-                ('switches', None, d.AllSwitches)
-            ))
-            children.append(self.ObjectToItem(
-                ('dtcs', None, d.AllDTCodes)
-            ))
+            children.append(
+                self.ObjectToItem(("params", None, d.AllParameters))
+            )
+            children.append(
+                self.ObjectToItem(("switches", None, d.AllSwitches))
+            )
+            children.append(self.ObjectToItem(("dtcs", None, d.AllDTCodes)))
             return 3
 
         node = self.ItemToObject(item)
@@ -512,13 +721,14 @@ class TranslatorViewModel(dv.PyDataViewModel):
             node_type, parent, node_data = node
 
             out_items = []
-            if node_type in ['params', 'switches', 'dtcs']:
+            if node_type in ["params", "switches", "dtcs"]:
                 for par in node_data.values():
                     if par.Valid:
-                        out_items.append(self.ObjectToItem(
-                            ('param', node, par)
-                        ))
-                for x in out_items: children.append(x)
+                        out_items.append(
+                            self.ObjectToItem(("param", node, par))
+                        )
+                for x in out_items:
+                    children.append(x)
                 return len(out_items)
 
         return 0
@@ -532,7 +742,7 @@ class TranslatorViewModel(dv.PyDataViewModel):
 
             if isinstance(node, tuple):
                 node_type, parent, node_data = node
-                if node_type in ['params', 'switches', 'dtcs']:
+                if node_type in ["params", "switches", "dtcs"]:
                     attr.SetBold(True)
                     return True
 
@@ -548,7 +758,7 @@ class TranslatorViewModel(dv.PyDataViewModel):
 
         if isinstance(node, tuple):
             node_type, parent, node_data = node
-            if node_type in ['params', 'switches', 'dtcs']:
+            if node_type in ["params", "switches", "dtcs"]:
                 return True
 
         return False
@@ -563,7 +773,9 @@ class TranslatorViewModel(dv.PyDataViewModel):
         node2_type, parent2, node_data2 = node2
 
         # parameters
-        if all(isinstance(x, tuple) and x[0] == 'param' for x in [node1, node2]):
+        if all(
+            isinstance(x, tuple) and x[0] == "param" for x in [node1, node2]
+        ):
 
             # sort by identifier
             if column == 1:
@@ -581,11 +793,13 @@ class TranslatorViewModel(dv.PyDataViewModel):
             return 1 if ascending == (n1 > n2) else -1
 
         # headers
-        elif all(isinstance(x, tuple) and x[1] is None for x in [node1, node2]):
+        elif all(
+            isinstance(x, tuple) and x[1] is None for x in [node1, node2]
+        ):
             _type_map = {
-                'params': 1,
-                'switches': 2,
-                'dtcs': 3,
+                "params": 1,
+                "switches": 2,
+                "dtcs": 3,
             }
             return _type_map[node1_type] > _type_map[node2_type]
 
@@ -603,12 +817,12 @@ class TranslatorViewModel(dv.PyDataViewModel):
             node_type, parent, node_data = node
 
             # categories have no parent
-            if node_type in ['params', 'switches', 'dtcs']:
+            if node_type in ["params", "switches", "dtcs"]:
                 return dv.NullDataViewItem
-            elif node_type == 'param':
+            elif node_type == "param":
                 return self.ObjectToItem(parent)
             else:
-                raise ValueError('Unrecognized node')
+                raise ValueError("Unrecognized node")
 
     def HasValue(self, item, col):
         if col > 2:
@@ -622,24 +836,24 @@ class TranslatorViewModel(dv.PyDataViewModel):
 
         _col_map = {
             0: -1,
-            1: '',
-            2: '',
+            1: "",
+            2: "",
         }
 
         if isinstance(node, tuple):
             node_type, parent, node_data = node
             _type_map = {
-                'params': 'Parameters',
-                'switches': 'Switches',
-                'dtcs': 'Diagnostic Trouble Codes',
+                "params": "Parameters",
+                "switches": "Switches",
+                "dtcs": "Diagnostic Trouble Codes",
             }
             if node_type in _type_map:
                 _col_map = {
                     0: -1,
-                    1: '',
+                    1: "",
                     2: _type_map[node_type],
                 }
-            elif node_type == 'param':
+            elif node_type == "param":
                 _col_map = {
                     0: 1 if node_data.Enabled else 0,
                     1: node_data.Identifier,
@@ -654,7 +868,7 @@ class TranslatorViewModel(dv.PyDataViewModel):
 
             if isinstance(node, tuple):
                 node_type, parent, node_data = node
-                if node_type == 'param':
+                if node_type == "param":
                     if value:
                         node_data.enable()
                     else:

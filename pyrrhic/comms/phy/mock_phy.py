@@ -15,14 +15,16 @@
 
 import os
 
-from ....common.helpers import PyrrhicWorker
-from ....comms.phy.base import CommunicationDevice
 from queue import Queue, Empty
 from time import sleep
 
+from ...common.helpers import PyrrhicWorker
+from .base import CommunicationDevice
+
+
 class MockResponseWorker(PyrrhicWorker):
     def __init__(self, device, delay, length):
-        super(MockResponseWorker, self).__init__()
+        super().__init__()
         self._device = device
         self._delay = delay
         self._length = length
@@ -30,7 +32,8 @@ class MockResponseWorker(PyrrhicWorker):
     def run(self):
         while not self._stoprequest.is_set():
             self._device.ReadQueue.put_nowait(os.urandom(self._length))
-            sleep(self._delay*1e-3)
+            sleep(self._delay * 1e-3)
+
 
 class MockDevice(CommunicationDevice):
     """ECU physical-layer communication encapsulation/interface"""
@@ -47,7 +50,7 @@ class MockDevice(CommunicationDevice):
         pass
 
     def read(self, num_msgs=1):
-        out = b''
+        out = b""
         while len(out) < num_msgs:
             try:
                 b = self._read_q.get_nowait()

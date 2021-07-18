@@ -19,40 +19,77 @@ from json import JSONEncoder
 from queue import Queue
 from threading import Thread, Event
 
+
 class Container(UserDict):
     """Dictionary that stores a pointer to its containing parent"""
-    def __init__(self, parent, data={}, name=''):
-        super(Container, self).__init__(data)
-        self._parent = parent
-        self._name = name
+
+    def __init__(self, parent, data={}, name=""):
+        super().__init__(data)
+        self.parent = parent
+        self.name = name
 
     def __repr__(self):
         return '<{}: "{}" [{}]>'.format(
-            type(self).__name__, self._name, len(self.data)
+            type(self).__name__, self.name, len(self.data)
         )
 
-    @property
-    def Parent(self):
-        return self._parent
 
-    @property
-    def Name(self):
-        return self._name
+class DefinitionContainer(Container):
+    pass
+
+
+class EditorDefContainer(Container):
+    pass
+
+
+class LoggerProtocolContainer(Container):
+    pass
+
+
+class LoggerDefContainer(Container):
+    pass
+
+
+class InfoContainer(Container):
+    pass
+
+
+class ScalingContainer(Container):
+    pass
+
+
+class CategoryContainer(Container):
+    pass
+
+
+class TableContainer(Container):
+    pass
+
+
+class LogParamContainer(Container):
+    pass
+
+
+class ECUFlashSearchTree(Container):
+    pass
+
 
 class PyrrhicJSONSerializable(object):
     def to_json(self):
         return NotImplementedError
+
     def from_json(self):
         return NotImplementedError
 
-class PyrrhicJSONEncoder(JSONEncoder):
 
+class PyrrhicJSONEncoder(JSONEncoder):
     def default(self, obj):
 
         if isinstance(obj, PyrrhicJSONSerializable):
             return obj.to_json()
 
         return JSONEncoder.default(self, obj)
+
 
 class PyrrhicMessage(object):
     def __init__(self, msg, data=None):
@@ -76,12 +113,13 @@ class PyrrhicMessage(object):
     @property
     def TimeStr(self):
         "`str` with message time in HH:MM:SS format"
-        return self._timestamp.strftime('%H:%M:%S')
+        return self._timestamp.strftime("%H:%M:%S")
 
     @property
     def DateStr(self):
         "`str` with message date in YYYY-MM-DD format"
-        return self._timestamp.strftime('%Y-%m-%d')
+        return self._timestamp.strftime("%Y-%m-%d")
+
 
 class PyrrhicWorker(Thread):
     "Generalized worker thread base class."
@@ -91,18 +129,18 @@ class PyrrhicWorker(Thread):
 
         # check for target/args keywords, and add self to positional
         # arguments if both keys were specified
-        if all([x in kwargs for x in ['target', 'args']]):
-            kwargs['args'] = (self, *kwargs['args'])
-            self.run = kwargs['target']
+        if all([x in kwargs for x in ["target", "args"]]):
+            kwargs["args"] = (self, *kwargs["args"])
+            self.run = kwargs["target"]
 
-        super(PyrrhicWorker, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._in_q = Queue()
         self._out_q = Queue()
         self._stoprequest = Event()
 
         # override run method during initialization
-        if 'target' in kwargs:
-            self.run = kwargs['target']
+        if "target" in kwargs:
+            self.run = kwargs["target"]
 
     def run(self):
         """To be implemented in subclasses.
@@ -128,7 +166,7 @@ class PyrrhicWorker(Thread):
 
     def join(self, timeout=None):
         self._stoprequest.set()
-        super(PyrrhicWorker, self).join(timeout)
+        super().join(timeout)
 
     @property
     def InQueue(self):

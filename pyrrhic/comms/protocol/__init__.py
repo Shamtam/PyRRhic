@@ -14,8 +14,9 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from ... import _debug
-from .base import TranslatorParseError
+from .base import TranslatorParseError  # noqa:F401
 from .ssm import protocols as ssm_protocols
+
 
 def get_all_protocols():
     """Get all configured protocols.
@@ -30,7 +31,9 @@ def get_all_protocols():
     protocols.update(ssm_protocols)
 
     if _debug:
-        from ...tests.comms.protocol import _protocols as test_protocols
-        protocols.update(test_protocols)
+
+        from .mock_ssm import _protocols as mock_ssm_protocols
+
+        protocols.update(mock_ssm_protocols)
 
     return protocols

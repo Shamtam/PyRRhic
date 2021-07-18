@@ -16,20 +16,16 @@
 import logging
 
 from ..common.definitions import ROMDefinition
-from ..common.helpers import Container
+from ..common.helpers import (
+    InfoContainer,
+    TableContainer,
+    CategoryContainer,
+    LogParamContainer,
+)
 from .structures import RomTable, RamTable
 
 _logger = logging.getLogger(__name__)
 
-# Dummy classes to make ViewModel hierarchy easy to handle
-class InfoContainer(Container):
-    pass
-class TableCategoryContainer(Container):
-    pass
-class TableContainer(Container):
-    pass
-class LogParamContainer(Container):
-    pass
 
 class Rom(object):
     def __init__(self, fpath, raw_data, definition):
@@ -43,8 +39,8 @@ class Rom(object):
 
         # nested `dict` keyed as follows
         # tables[<category>][<name>]
-        self._tables = TableCategoryContainer(self)
-        self._ram_tables = TableCategoryContainer(self)
+        self._tables = CategoryContainer(self)
+        self._ram_tables = CategoryContainer(self)
 
         # all live-tunable tables keyed by ROM address
         self._ram_tables_addr = {}
@@ -56,28 +52,28 @@ class Rom(object):
         self._initialize()
 
     def __repr__(self):
-        return '<Rom {}/{} [{}]>'.format(
+        return "<Rom {}/{} [{}]>".format(
             self._definition.LoggerID,
             self._definition.EditorID,
-            self._filepath
+            self._filepath,
         )
 
     def _initialize(self):
         _logger.debug(
-            'Initializing ROM Definition for {}'.format(self._filepath)
+            "Initializing ROM Definition for {}".format(self._filepath)
         )
 
         editor_def = self._definition.EditorDef
         logger_def = self._definition.LoggerDef
 
         self._info = InfoContainer(
-            self, {k:v for k, v in editor_def.DisplayInfo.items()}
+            self, {k: v for k, v in editor_def.DisplayInfo.items()}
         )
 
         self._initialize_tables()
 
     def _initialize_tables(self):
-        tables = TableCategoryContainer(self)
+        tables = CategoryContainer(self)
         for tab in self._definition.EditorDef.AllTables.values():
 
             # only consider tables that are fully defined
@@ -91,8 +87,10 @@ class Rom(object):
             name = tab.Name
             if name in tables:
                 _logger.warn(
-                    ('Duplicate table definition {}:{}. '
-                    + 'Ignoring duplicate definition').format(cat, name)
+                    (
+                        "Duplicate table definition {}:{}. "
+                        + "Ignoring duplicate definition"
+                    ).format(cat, name)
                 )
                 continue
 
@@ -104,7 +102,7 @@ class Rom(object):
         # smarts or a definition that explicity marks tables that are
         # RAM-tunable
         # for now only initialize 2D and 3D tables as RAM tables
-        ram_tables = TableCategoryContainer(self)
+        ram_tables = CategoryContainer(self)
         for cat in self._tables:
 
             if cat not in ram_tables:
@@ -126,8 +124,8 @@ class Rom(object):
         """Return `RAMTable` corresponding to the given ROM address."""
         if rom_addr not in self._ram_tables_addr:
             raise ValueError(
-                'Unable to locate definition of table with ROM address '
-                '0x{:x}'.format(rom_addr)
+                "Unable to locate definition of table with ROM address "
+                "0x{:x}".format(rom_addr)
             )
         return self._ram_tables_addr[rom_addr]
 
@@ -144,7 +142,7 @@ class Rom(object):
 
         out_path = fpath if fpath is not None else self._filepath
 
-        with open(out_path, 'wb') as fp:
+        with open(out_path, "wb") as fp:
             fp.write(self._bytes)
 
         # update static bytes
@@ -176,12 +174,12 @@ class Rom(object):
 
     @property
     def OriginalBytes(self):
-        '`bytes` object containing the original raw ROM binary'
+        "`bytes` object containing the original raw ROM binary"
         return self._orig_bytes
 
     @property
     def Bytes(self):
-        'Mutable `bytearray` object containing the current raw ROM binary'
+        "Mutable `bytearray` object containing the current raw ROM binary"
         return self._bytes
 
     @property

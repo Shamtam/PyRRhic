@@ -23,14 +23,16 @@ from ..common.structures import RomTable
 from .panelsBase import bTreePanel
 from .ViewModels import RomViewModel
 
+
 class TreePanel(bTreePanel):
     def __init__(self, *args, **kwargs):
-        super(TreePanel, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
+        pub.subscribe(self.initialize, 'controller.init')
         pub.subscribe(self.update_model, 'editor.table.rom.change')
 
-    def initialize(self):
-        self._model = RomViewModel(self.Parent.Controller)
+    def initialize(self, controller):
+        self._model = RomViewModel(controller)
         self._dvc.AssociateModel(self._model)
         self._model.DecRef()
 

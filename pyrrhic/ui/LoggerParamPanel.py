@@ -15,15 +15,16 @@
 
 import wx
 
+from pubsub import pub
 from wx import dataview as dv
 
 from .panelsBase import bLoggerParamPanel
 from .ViewModels import TranslatorViewModel, OptionalToggleRenderer
 
+
 class LoggerParamPanel(bLoggerParamPanel):
-    def __init__(self, *args):
-        super(LoggerParamPanel, self).__init__(*args)
-        self._controller = self.Parent.Controller
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def initialize(self, translator):
         self._model = TranslatorViewModel(translator)
@@ -80,7 +81,7 @@ class LoggerParamPanel(bLoggerParamPanel):
 
     def OnUpdateParams(self, event):
         # TODO: veto enabling of parameters if beyond query capacity
-        self._controller.update_log_params()
+        pub.sendMessage('comms.logquery.selection')
 
     def OnEditItem(self, event):
         event.Skip()

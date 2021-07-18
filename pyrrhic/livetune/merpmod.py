@@ -43,7 +43,7 @@ class MerpModLiveTune(LiveTuneData):
 
     def __init__(self, rom, start_addr, end_addr):
         ram_size = end_addr - start_addr
-        super(MerpModLiveTune, self).__init__(rom, ram_size)
+        super().__init__(rom, ram_size)
         self._start_addr = start_addr
         self._end_addr = end_addr
         self._temp_allocations = {}

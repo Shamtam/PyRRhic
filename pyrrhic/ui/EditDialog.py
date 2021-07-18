@@ -46,7 +46,7 @@ class FloatTextCtrlValidator(wx.Validator):
 
 class EditDialog(bEditDialog):
     def __init__(self, parent, op='='):
-        super(EditDialog, self).__init__(parent)
+        super().__init__(parent)
         self._input.SetValidator(FloatTextCtrlValidator())
         self.SetAffirmativeId(wx.ID_SAVE)
 

@@ -13,287 +13,387 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+"""Common data structures used across all of PyRRhic."""
+
 import logging
 import numpy as np
 import struct
 
-from sympy import sympify, lambdify, solve
-from math import prod
-from xml.etree.ElementTree import Element
+from sympy import solve
 
 from .enums import (
-    ByteOrder, DataType, UserLevel, ByteOrder,
-    _byte_order_struct_map, _dtype_struct_map, _dtype_size_map
+    ByteOrder,
+    DataType,
+    UserLevel,
+    _byte_order_struct_map,
+    _dtype_struct_map,
+    _dtype_size_map,
 )
+from .helpers import LogParamContainer, PyrrhicJSONSerializable, TableContainer
 from .utils import bound_int
+
 
 _logger = logging.getLogger()
 
-class Scaling(object):
-    def __init__(self, name, parent, **kwargs):
-        self.name = name
+
+class Scaling(PyrrhicJSONSerializable):
+    """Encapsulation of a conversion between raw and display numerical values.
+
+    Besides ``parent`` and ``name``, all attributes are optional, and can
+    be specified via keyword argument.
+
+    Attributes:
+        parent (:class:`.ScalingContainer`)
+        name (str): Unique internal identifer
+        min: Minimum allowed display value (float), or ``None`` (default)
+        max: Maximum allowed display value (float), or ``None`` (default)
+        step (float): Increment/decrement step size, defaults to ``1e-3``
+        padding: Number of zeroes to left-pad the displayed value with (int),
+            or ``None`` if no padding should be applied (default)
+        precision: Number of decimal places (int), defaults to ``3``
+        format (str): String representing display format. Valid values are
+            ``f`` (default), ``d``, ``x``, and ``s`` (standard C/Python format).
+        units (str): User-facing string, defaults to a blank string
+        expression: For regular numerical scalings, this is a string containing
+            the function used to calculate the scaled numbers between raw and
+            display values. The expression should be a simple expression
+            containing a single variable, ``x``, along with standard functions
+            and arithmetic operations. This string is processed internally by
+            ``sympy.sympify``. Refer to SymPy documentation for acceptable
+            tokens and operations that can be used in the expressions.
+
+            For bloblists, this is a dictionary mapping ``bytes`` to ``str``.
+    """
+
+    def __init__(self, parent, name, **kwargs):
         self.parent = parent
-        self.disp_expr = kwargs.pop('disp_expr', 'x')
-        self.raw_expr = kwargs.pop('raw_expr', 'x')
-        self.units = kwargs.pop('units', None)
-        self.min = kwargs.pop('min', None)
-        self.max = kwargs.pop('max', None)
-        self.xml = kwargs.pop('xml', None)
+        self.name = name
+        self.min = kwargs.pop("min", None)
+        self.max = kwargs.pop("max", None)
+        self.step = kwargs.pop("step", 1e-3)
+        self.padding = kwargs.pop("padding", None)
+        self.precision = kwargs.pop("precision", 3)
+        self.format = kwargs.pop("format", "f")
+        self.units = kwargs.pop("units", "")
+        self.expression = kwargs.pop("expression", "x")
 
-        self._to_disp = (
-            lambdify('x', self.disp_expr, 'numpy')
-            if isinstance(self.disp_expr, str) else
-            lambda x: self.disp_expr[x]
-        )
-
-        self._to_raw = (
-            lambdify('x', self.raw_expr, 'numpy')
-            if isinstance(self.raw_expr, str) else
-            lambda x: self.raw_expr[x]
-        )
-
-    def __repr__(self):
-        return '<Scaling {}:{}>'.format(
-            self.parent.Identifier,
-            self.name
-        )
-
-    def to_disp(self, value):
-        return self._to_disp(value)
-
-    def to_raw(self, value):
-        return self._to_raw(value)
-
-class TableDef(object):
-    """
-    Common base class encompassing a table definition.
-
-    Requires a name (a unique identifier). Keywords can be used to
-    initialize any class properties. Any supplied keywords must be
-    correctly typed or they'll be ignored; refer to property
-    descriptions for correct types.
-    """
-    def __init__(self, name, parent, **kwargs):
-        self._name = name
-        self._parent = parent
-        self._category = kwargs.pop('Category', None)
-        self._desc = kwargs.pop('Description', None)
-        self._level = kwargs.pop('Level', None)
-        self._scaling = kwargs.pop('Scaling', None)
-        self._datatype = kwargs.pop('Datatype', None)
-        self._axes = kwargs.pop('Axes', None)
-        self._values = kwargs.pop('Values', None)
-        self._length = kwargs.pop('Length', None)
-        self._byte_order = kwargs.pop('ByteOrder', ByteOrder.BIG_ENDIAN) # TODO: placeholder... pull this from definition
-
-        addr = kwargs.pop('Address', None)
-        try:
-            # handle addresses passed in as a hex string or as a raw int
-            if isinstance(addr, int):
-                self._address = addr
-            elif isinstance(addr, str):
-                self._address = int(addr, base=16)
-            else:
-                self._address = None
-
-        except ValueError:
-            _logger.warn('Invalid address "{}" for table {} in def {}'.format(
-                addr, name, parent.Identifier
-            ))
-            self._address = None
-
-        # update any axes to point to this table as its parent
-        if self._axes:
-            for ax in self._axes:
-                ax._parent = self
+        # for bloblists, cache a reversed dictionary for converting a display
+        # string back to the raw bytes
+        self._reverse_expression = None
+        if isinstance(self.expression, dict):
+            self._reverse_expression = {
+                v: k for k, v in self.expression.items()
+            }
 
     def __repr__(self):
-        if self._axes:
-            return '<TableDef{}D {}/{}>'.format(
-                len(self._axes) + 1,
-                self._category,
-                self._name
-            )
+        return "<Scaling {}>".format(self.name)
+
+    def to_disp_val(self, raw_val):
+        """Returns converts the given raw value a display value in its native
+        format."""
+
+        if isinstance(self.expression, dict):
+            return self.expression[raw_val]
+
         else:
-            return '<TableDef1D {}/{}>'.format(self._category, self._name)
+            expr = f"({self.expression}) - y"
 
-    def update(self, table):
-        """
-        Update undefined parameters from the passed in `Table` instance
-        """
+            val = float(solve(expr, "y")[0].subs("x", raw_val))
 
-        _logger.debug('Updating table {}:{} from parent {}'.format(
-            self.Parent.Identifier, self._name, table.Parent.Identifier
-        ))
+            if self.min:
+                val = max(val, self.min)
 
-        # all non-axis properties in this instance
-        props = [p for p in vars(self).keys() if 'axes' not in p]
+            if self.max:
+                val = min(val, self.max)
 
-        # all defined properties in passed-in instance
-        new_props = set([p for p in props if table.__getattribute__(p) is not None])
+            return val
 
-        # all undefined properties in self
-        undef_props = set([k for k in props if self.__getattribute__(k) is None])
+    def to_disp_str(self, raw_val):
+        """Returns a formatted string for the given raw numerical value."""
 
-        # intersect both sets, update this instance's properties
-        update_props = new_props.intersection(undef_props)
-        for p in update_props:
-            _logger.debug(
-                'Updating table -- {}:{}.{} -> {}:{}'.format(
-                    table.Parent.Identifier,
-                    table.Name,
-                    p,
-                    self._parent,
-                    self._name
-                )
+        val = self.to_disp_val(raw_val)
+
+        if isinstance(val, str):
+            return val
+
+        if self.format in ["d", "x"]:
+            prefix = "0x" if self.format == "x" else ""
+            pad = f"0{self.padding:d}" if self.padding else ""
+            val = int(val)
+            return f"{prefix}{{:{pad}{self.format}}}".format(val)
+
+        elif self.format == "f":
+            return f"{{:.{self.precision:d}f}}".format(val)
+
+    def to_raw(self, str_val):
+        """Returns the raw value for the given string in its native format."""
+
+        if isinstance(self.expression, dict):
+            inv_map = {v: k for k, v in self.expression.items()}
+            return inv_map[str_val]
+
+        else:
+            try:
+                # bloblists should directly map between bytes and display str
+                if (
+                    self.format == "s"
+                    and isinstance(self.expression, dict)
+                    and self._reverse_expression is not None
+                ):
+                    return self._reverse_expression[str_val]
+
+                elif self.format == "x":
+                    val = int(str_val, base=16)
+                elif self.format == "d":
+                    val = int(str_val)
+                else:
+                    val = float(str_val)
+
+            except ValueError:
+                raise ValueError(f'Unable to convert "{str_val}" to float')
+
+            expr = f"({self.expression}) - y"
+            return float(solve(expr, "x")[0].subs("y", val))
+
+
+class TableDef(PyrrhicJSONSerializable):
+    """Encapsulation of a table definition.
+
+    Besides ``parent`` and ``name``, all attributes are optional, and can be
+    specified via keyword argument.
+
+    Attributes:
+        parent: Definition container that contains this table (either
+            a subclass of :class:`.Container` or :class:`.TableDef`, for axes)
+        name (str): User-facing display name (also used as unique identifier)
+        description (str): Extended description text for table
+        level (:class:`.UserLevel`): User level of the table
+        scalings (list): list of ``str``, associated scaling names
+        datatype (:class:`.DataType`): Underlying table data type
+        endian (:class:`.ByteOrder`): Underlying byte order
+        axes (list): List of ``dict`` defining the table's axes. Each ``dict``
+            in the list should contain all keywords necessary to instantiate
+            a suitable :class:`.TableDef` instance to describe each axis.
+        elements (int): Number of elements in the table. This should only be
+            used for regular 1D tables
+        values (list): List of ``str`` containing table's display values. This
+            should only be used for static 1D tables
+        address (int): Base table address
+    """
+
+    def __init__(self, parent, name, **kwargs):
+        self.parent = parent
+        self.name = name
+        self.description = kwargs.pop("description", None)
+        self.level = kwargs.pop("level", None)
+        self.scalings = kwargs.pop("scalings", [])
+        self.datatype = kwargs.pop("datatype", None)
+        self.endian = kwargs.pop("endian", ByteOrder.BIG_ENDIAN)
+        self.address = kwargs.pop("address", None)
+        self.elements = kwargs.pop("elements", None)
+
+        # instantiate axes based on supplied axis keyword dicts
+        self.axes = []
+        axes = kwargs.pop("axes", [])
+        if axes and 1 <= len(axes) <= 2:
+            for idx, ax in enumerate(axes):
+                ax_name = ax.pop("name", f"Axis {idx}")
+                self.axes.append(TableDef(self, ax_name, **ax))
+        elif axes:
+            raise ValueError(f"Invalid number of axes supplied ({len(axes)})")
+
+        self.values = kwargs.pop("values", [])
+        if self.values and (self.axes or not self.datatype == DataType.STATIC):
+            raise ValueError(
+                "Non-static table and/or 2D/3D table should not have defined "
+                "values"
             )
-            self.__setattr__(p, table.__getattribute__(p))
 
-        # for matching table type based on axes, update each axis
-        if self._axes and table._axes and len(self._axes) == len(table._axes):
-            for ax, newax in zip(self._axes, table._axes):
-                if not ax.FullyDefined:
-                    _logger.debug(
-                        'Updating axis -- {}:{}[{}] -> {}:{}[{}]'.format(
-                            table.Parent.Identifier,
-                            table.Name,
-                            newax.Name,
-                            self._parent,
-                            self._name,
-                            ax.Name,
-                        )
-                    )
-                    ax.update(newax)
-
-        # for tables whose axes are inherited
-        elif not self._axes and table._axes:
-            self._axes = table._axes
-
-    @property
-    def FullyDefined(self):
-        """
-        Returns `True` if all table properties are defined, `False` otherwise.
-        """
-        props = [
-            p for p, value in vars(self).items()
-            if 'axes' not in p
-        ]
-        undef_axes = []
-
-        # remove irrelevant properties for 2D/3D tables
-        if self._axes:
-            props.remove('_values')
-            props.remove('_length')
-            undef_axes = [
-                x for x in self._axes
-                if not x.FullyDefined
-            ]
-
-        if not self._axes:
-            # static axis, no need for address, length or scaling
-            if self._values is not None:
-                props.remove('_address')
-                props.remove('_length')
-                props.remove('_scaling')
-            # standard axis, no need for values
-            if self._address is not None:
-                props.remove('_values')
-
-        # axes don't need descriptive elements
-        if isinstance(self._parent, TableDef):
-            props.remove('_category')
-            props.remove('_desc')
-            props.remove('_level')
-
-        undef_props = [x for x in props if self.__getattribute__(x) is None]
-        return (not undef_props) and (not undef_axes)
-
-    @property
-    def Name(self):
-        return self._name
-
-    @property
-    def Identifier(self):
-        "Alias for TableDef.Name"
-        return self._name
-
-    @property
-    def Parent(self):
-        return self._parent
+    def __repr__(self):
+        return "<TableDef{}D {}/{}>".format(
+            len(self.axes) + 1, self.Category, self.name
+        )
 
     @property
     def Category(self):
-        return self._category
+        if isinstance(self.parent, TableContainer):
+            return self.parent.name
+        else:
+            return None
 
     @property
-    def Description(self):
-        return self._desc
+    def EditorDef(self):
+        """The :class:`.EditorDef` that contains this table's definition."""
 
-    @property
-    def Level(self):
-        return self._level
+        # regular tables
+        if isinstance(self.parent, TableContainer):
+            return self.parent.parent
 
-    @property
-    def Scaling(self):
-        return self._scaling
-
-    @Scaling.setter
-    def Scaling(self, s):
-        if isinstance(s, Scaling):
-            self._scaling = s
-
-    @property
-    def Datatype(self):
-        return self._datatype
+        # axes
+        elif isinstance(self.parent, TableDef):
+            return self.parent.EditorDef
 
     @property
     def Length(self):
-
+        """Total number of elements in table"""
         # 2D and 3D tables
-        if self._axes:
-            lengths = [x.Length for x in self._axes]
-            if all([x is not None for x in lengths]):
-                return prod(lengths)
+        if self.axes:
+            lengths = [x.Length for x in self.axes]
+            if all([isinstance(x, int) for x in lengths]):
+                return np.prod(lengths)
 
-        # 1D tables
-        # bloblist
-        elif self._values is not None:
-            return len(self._values)
+        # bloblist tables must be linked to a single Scaling with an expression
+        # dictionary that maps raw bytes to display strings
+        elif (
+            self.datatype == DataType.BLOB
+            and isinstance(self.scalings, list)
+            and len(self.scalings) == 1
+        ):
+            scaling = self.EditorDef.get_scaling(self.scalings[0])
+            if (
+                isinstance(scaling, Scaling)
+                and isinstance(scaling.expression, dict)
+            ):
+                return len(scaling.expression)
 
-        # standard table
-        elif self._length is not None:
-            return self._length
+        # static tables must have defined values
+        elif self.datatype == DataType.STATIC and self.values:
+            return len(self.values)
 
-        return None
+        # axes must have a defined number of elements if not static/bloblist
+        elif self.elements is not None:
+            return self.elements
+
+        # standard 1D tables always have length 1
+        else:
+            return 1
 
     @property
     def NumBytes(self):
-        if self._datatype not in [DataType.BLOB, DataType.STATIC]:
-            return self.Length*_dtype_size_map[self._datatype]
-        elif self._datatype == DataType.BLOB:
-            # use first key from scaling disp_expression dictionary
-            # to determine blob length
-            return len(bytes.fromhex(list(self.Scaling.disp_expr.keys())[0]))
-        return None
+        """Total size of table, in bytes."""
+
+        if (
+            self.datatype not in [DataType.BLOB, DataType.STATIC]
+            and self.Length is not None
+        ):
+            return self.Length * _dtype_size_map[self.datatype]
+
+        # for bloblists, use first key from scaling's byte/str mapping to
+        # determine total table size
+        elif (
+            self.datatype == DataType.BLOB
+            and isinstance(self.scalings, list)
+            and len(self.scalings) == 1
+        ):
+            scaling = self.EditorDef.get_scaling(self.scalings[0])
+            if (
+                isinstance(scaling, Scaling)
+                and isinstance(scaling.expression, dict)
+            ):
+                return len(next(iter(self.scalings[0].expression.keys())))
+
+
+class LogParamDef(PyrrhicJSONSerializable):
+    """Encapsulation of a logger parameter definition.
+
+    Besides ``parent`` and ``identifier``, all attributes are optional, and can
+    be specified via keyword argument.
+
+    Attributes:
+        parent: Subclass of :class:`.Container` that contains this definition
+        identifier (str): Unique identifier
+        name (str): User-facing display name for the parameter
+        description (str): Extended description text for the parameter
+        scalings (list): list of ``str``, associated scaling names
+        datatype (:class:`.DataType`): Underlying parameter data type. Use one
+            of the ``DataType.BIT#`` values for switch parameters
+        endian (:class:`.ByteOrder`): Underlying parameter byte order
+        addresses (list): list of ``int``
+        endpoint (:class:`.LoggerEndpoint`): Parameter's target endpoint
+        byte_idx (int): Byte index corresponding to this parameter used for
+            detecting endpoint support
+        bit_idx (int): Bit index within the byte corresponding to this
+            parameter, used for detecting endpoint support
+        group (int): group (DS2 only?)
+        subgroup (int): subgroup (DS2 only?)
+        groupsize (int): group size (DS2 only?)
+    """
+
+    def __init__(self, parent, identifier, **kwargs):
+        self.parent = parent
+        self.identifier = identifier
+        self.name = kwargs.pop("name", identifier)
+        self.description = kwargs.pop("description", None)
+        self.scalings = kwargs.pop("scalings", [])
+        self.datatype = kwargs.pop("datatype", None)
+        self.endian = kwargs.pop("endian", ByteOrder.BIG_ENDIAN)
+        self.addresses = kwargs.pop("addresses", [])
+        self.endpoint = kwargs.pop("endpoint", None)
+        self.byte_idx = kwargs.pop("byte_idx", None)
+        self.bit_idx = kwargs.pop("bit_idx", None)
+        self.group = kwargs.pop("group", None)
+        self.subgroup = kwargs.pop("subgroup", None)
+        self.groupsize = kwargs.pop("groupsize", None)
+
+    def __repr__(self):
+        if 0 <= self.datatype <= 7:
+            type_str = "SwitchDef"
+        elif self.byte_idx is not None and self.bit_idx is not None:
+            type_str = "StdParamDef"
+        elif self.addresses:
+            type_str = "ExtParamDef"
+        else:
+            type_str = self.__class__.__name__
+
+        return f"<{type_str} {self.identifier}/{self.name}>"
 
     @property
-    def Address(self):
-        return self._address
+    def LoggerDef(self):
+        """The :class:`.LoggerDef` that contains this parameter definition."""
+
+        if isinstance(self.parent, LogParamContainer):
+            return self.parent.parent
+
+
+class LogDTCDef(PyrrhicJSONSerializable):
+    """Encapsulation of a logger diagnostic trouble code definition.
+
+    Besides ``parent`` and ``identifier``, all attributes are optional, and can
+    be specified via keyword argument.
+
+    Attributes:
+        parent: Subclass of :class:`.Container` that contains this definition
+        identifier (str): Unique identifier
+        name (str): User-facing display name for the parameter
+        description (str): Extended description text for the parameter
+        bit (:class:`.DataType`): Use one of the ``DataType.BIT#`` values.
+        temp_addr (int):
+        mem_addr (int):
+    """
+
+    def __init__(self, parent, identifier, **kwargs):
+        self.parent = parent
+        self.identifier = identifier
+        self.name = kwargs.pop("name", identifier)
+        self.description = kwargs.pop("description", None)
+        self.bit = kwargs.pop("datatype", None)
+        self.temp_addr = kwargs.pop("temp_addr", None)
+        self.mem_addr = kwargs.pop("temp_addr", None)
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__} {self.identifier}/{self.name}>"
 
     @property
-    def Axes(self):
-        return self._axes
+    def LoggerDef(self):
+        """The :class:`.LoggerDef` that contains this DTC definition."""
 
-    @property
-    def Values(self):
-        return self._values
+        if isinstance(self.parent, LogParamContainer):
+            return self.parent.parent
 
-    @property
-    def ByteOrder(self):
-        return self._byte_order
 
 class EditorTable(object):
     """Base class for table definition/bytes to UI translation objects"""
+
     def __init__(self, parent, tabledef):
         self._parent = parent
         self._definition = tabledef
@@ -314,14 +414,14 @@ class EditorTable(object):
         # 3D table
         if self._axes is not None and len(self._axes) == 2:
             cols = self._axes[0].Definition.Length
-            idx = (idx1*cols + idx2)*elem_size
+            idx = (idx1 * cols + idx2) * elem_size
         # 1D/2D table
         else:
-            idx = max(idx1, idx2)*elem_size
+            idx = max(idx1, idx2) * elem_size
 
         return (
-            self._bytes[idx:idx + elem_size] !=
-            self._orig_bytes[idx:idx + elem_size]
+            self._bytes[idx : idx + elem_size]
+            != self._orig_bytes[idx : idx + elem_size]
         )
 
     def check_valid_value(self, val):
@@ -365,12 +465,12 @@ class EditorTable(object):
         if self._axes is not None and len(self._axes) == 2:
             cols = self._axes[0].Definition.Length
             idx = (idx1, idx2)
-            bidx = (idx1*cols + idx2)*elem_size
+            bidx = (idx1 * cols + idx2) * elem_size
 
         # 1D/2D table
         else:
             idx = max(idx1, idx2)
-            bidx = idx*elem_size
+            bidx = idx * elem_size
 
         return idx, bidx, elem_size, unpack_str
 
@@ -392,12 +492,12 @@ class EditorTable(object):
 
         val = struct.unpack_from(unpack_str, self._bytes, bidx)[0]
         flip = -1 if decrement else 1
-        new_val = val + step*flip
+        new_val = val + step * flip
 
         if dtype != DataType.FLOAT:
             new_val = bound_int(dtype, new_val)
 
-        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
+        self._bytes[bidx : bidx + elem_size] = struct.pack(unpack_str, new_val)
 
     def add_raw(self, offs, idx1, idx2=0):
         "Add `offs` to the value stored at the supplied index"
@@ -411,7 +511,7 @@ class EditorTable(object):
 
         val = struct.unpack_from(unpack_str, self.Bytes, bidx)[0]
         new_val = bound_int(dtype, val + offs)
-        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
+        self._bytes[bidx : bidx + elem_size] = struct.pack(unpack_str, new_val)
 
     def set_cell(self, val, idx1, idx2=0):
         "Set the value of the cell at the supplied index"
@@ -432,7 +532,7 @@ class EditorTable(object):
         if dtype != DataType.FLOAT:
             new_val = bound_int(dtype, int(new_val))
 
-        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
+        self._bytes[bidx : bidx + elem_size] = struct.pack(unpack_str, new_val)
 
     def add_cell(self, val, idx1, idx2=0):
         "Add the given value to the cell at the supplied index"
@@ -454,7 +554,7 @@ class EditorTable(object):
         if dtype != DataType.FLOAT:
             new_val = bound_int(dtype, int(new_val))
 
-        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
+        self._bytes[bidx : bidx + elem_size] = struct.pack(unpack_str, new_val)
 
     def mult_cell(self, val, idx1, idx2=0):
         "Multiply the cell at the supplied index by the given value"
@@ -466,7 +566,7 @@ class EditorTable(object):
 
         idx, bidx, elem_size, unpack_str = self._cell_info(idx1, idx2)
 
-        disp_val = val*self.DisplayValues[idx]
+        disp_val = val * self.DisplayValues[idx]
         new_val = (
             self._definition.Scaling.to_raw(disp_val)
             if self._definition.Scaling
@@ -476,7 +576,7 @@ class EditorTable(object):
         if dtype != DataType.FLOAT:
             new_val = bound_int(dtype, int(new_val))
 
-        self._bytes[bidx:bidx + elem_size] = struct.pack(unpack_str, new_val)
+        self._bytes[bidx : bidx + elem_size] = struct.pack(unpack_str, new_val)
 
     def revert(self):
         raise NotImplementedError
@@ -576,9 +676,10 @@ class EditorTable(object):
         else:
             return self.Values
 
+
 class RomTable(EditorTable):
     def __init__(self, parent, tabledef):
-        super(RomTable, self).__init__(parent, tabledef)
+        super().__init__(parent, tabledef)
 
         self.initialize_bytes()
 
@@ -589,7 +690,7 @@ class RomTable(EditorTable):
         self._current_scaling = self._definition.Scaling
 
     def __repr__(self):
-        return '<RomTable {}/{}>'.format(
+        return "<RomTable {}/{}>".format(
             self._definition.Category, self._definition.Name
         )
 
@@ -597,8 +698,8 @@ class RomTable(EditorTable):
         if self._definition.Datatype != DataType.STATIC:
             addr = self._definition.Address
             length = self.NumBytes
-            self._orig_bytes = self._parent.OriginalBytes[addr:addr + length]
-            self._bytes = memoryview(self._parent.Bytes)[addr:addr + length]
+            self._orig_bytes = self._parent.OriginalBytes[addr : addr + length]
+            self._bytes = memoryview(self._parent.Bytes)[addr : addr + length]
         else:
             self._orig_bytes = None
             self._bytes = None
@@ -613,10 +714,7 @@ class RomTable(EditorTable):
 
     @property
     def PanelTitle(self):
-        return '{} ({})'.format(
-            self._definition.Name,
-            self._parent.Path
-        )
+        return "{} ({})".format(self._definition.Name, self._parent.Path)
 
     @property
     def IsModified(self):
@@ -626,9 +724,10 @@ class RomTable(EditorTable):
                 modified = modified or ax.IsModified
         return modified
 
+
 class RamTable(EditorTable):
     def __init__(self, rom_table):
-        super(RamTable, self).__init__(rom_table.Parent, rom_table.Definition)
+        super().__init__(rom_table.Parent, rom_table.Definition)
         self._rom_table = rom_table
         self._axes = rom_table.Axes
 
@@ -649,25 +748,25 @@ class RamTable(EditorTable):
         # )
 
     def __repr__(self):
-        final_str = '['
+        final_str = "["
 
         final_str += (
-            '{:x}'.format(self.RomAddress)
+            "{:x}".format(self.RomAddress)
             if self.RomAddress is not None
-            else '???'
+            else "???"
         )
 
-        final_str += ' -> '
+        final_str += " -> "
 
         final_str += (
-            '{:x}'.format(self.RamAddress)
+            "{:x}".format(self.RamAddress)
             if self.RamAddress is not None
-            else '???'
+            else "???"
         )
 
-        final_str += ']'
+        final_str += "]"
 
-        return '<RamTable {}/{} {}>'.format(
+        return "<RamTable {}/{} {}>".format(
             self._definition.Category, self._definition.Name, final_str
         )
 
@@ -696,11 +795,11 @@ class RamTable(EditorTable):
         if isinstance(byte_view, memoryview):
 
             if len(byte_view) != self.NumBytes:
-                raise ValueError((
-                    'Specified `memoryview` has invalid length {}, '
-                    'expecting length {}').format(
-                        len(byte_view), self.NumBytes
-                    )
+                raise ValueError(
+                    (
+                        "Specified `memoryview` has invalid length {}, "
+                        "expecting length {}"
+                    ).format(len(byte_view), self.NumBytes)
                 )
 
             self._orig_bytes = byte_view.tobytes()
@@ -738,10 +837,7 @@ class RamTable(EditorTable):
 
     @property
     def PanelTitle(self):
-        return '[LIVE:0x{:x}] {}'.format(
-            self._ram_addr,
-            self._definition.Name
-        )
+        return "[LIVE:0x{:x}] {}".format(self._ram_addr, self._definition.Name)
 
     @property
     def IsModified(self):
@@ -751,14 +847,17 @@ class RamTable(EditorTable):
     def Active(self):
         return self._active
 
+
 class LogParam(object):
     "Base class for logger elements"
 
     def __init__(self, parent, identifier, name, desc, dtype, endpoint):
         self._parent = parent
         self._identifier = identifier
-        self._name = name #kwargs.pop('Name', 'LogParam_{}'.format(identifier))
-        self._desc = desc #kwargs.pop('Description', '')
+        self._name = (
+            name  # kwargs.pop('Name', 'LogParam_{}'.format(identifier))
+        )
+        self._desc = desc
         self._datatype = dtype
         self._endpoint = endpoint
 
@@ -767,7 +866,7 @@ class LogParam(object):
         self._value = None
 
     def __repr__(self):
-        return '<{} {}: {}>'.format(
+        return "<{} {}: {}>".format(
             type(self).__name__, self._identifier, self._name
         )
 
@@ -832,11 +931,13 @@ class LogParam(object):
             if self._value is not None:
                 if self._scaling is not None:
                     key = _dtype_struct_map[self._datatype]
-                    order = '>' # TODO: implement byte order
-                    val = struct.unpack('{}{}'.format(order, key), self._value)[0]
+                    order = ">"  # TODO: implement byte order
+                    val = struct.unpack(
+                        "{}{}".format(order, key), self._value
+                    )[0]
                     return self._scaling.to_disp(val)
                 else:
-                    return int.from_bytes(self._value, 'big')
+                    return int.from_bytes(self._value, "big")
             else:
                 return None
         else:
@@ -847,20 +948,23 @@ class LogParam(object):
 
         if isinstance(self, SwitchParam):
             if self._value is None:
-                return ''
+                return ""
             else:
-                return 'True' if self._value else 'False'
+                return "True" if self._value else "False"
 
         elif isinstance(self, (StdParam, ExtParam)):
             if self._value is None:
-                return ''
+                return ""
             elif self._scaling is not None:
-                return '{:.4g}'.format(self.Value) # TODO: implement proper formatting
+                return "{:.4g}".format(
+                    self.Value
+                )  # TODO: implement proper formatting
             else:
                 return self._value.hex()
 
         else:
-            return '{}'.format(self._value)
+            return "{}".format(self._value)
+
 
 class StdParam(LogParam):
     "Standard Parameter"
@@ -873,12 +977,12 @@ class StdParam(LogParam):
         must be correctly typed or they'll be ignored; refer to property
         descriptions for correct types.
         """
-        super(StdParam, self).__init__(*args)
-        self._addrs = kwargs.pop('Addresses', None)
-        self._bitidx = kwargs.pop('ECUBit')
-        self._byteidx = kwargs.pop('ECUByteIndex')
-        self._scalings = kwargs.pop('Scalings', {})
-        self._scaling = kwargs.pop('Scaling', None)
+        super().__init__(*args)
+        self._addrs = kwargs.pop("Addresses", None)
+        self._bitidx = kwargs.pop("ECUBit")
+        self._byteidx = kwargs.pop("ECUByteIndex")
+        self._scalings = kwargs.pop("Scalings", {})
+        self._scaling = kwargs.pop("Scaling", None)
 
     @property
     def Addresses(self):
@@ -914,6 +1018,7 @@ class StdParam(LogParam):
             else None
         )
 
+
 class ExtParam(LogParam):
     "Extended (endpoint-specific) Parameter"
 
@@ -925,10 +1030,10 @@ class ExtParam(LogParam):
         must be correctly typed or they'll be ignored; refer to property
         descriptions for correct types.
         """
-        super(ExtParam, self).__init__(*args)
-        self._addrs = kwargs.pop('Addresses', None)
-        self._scalings = kwargs.pop('Scalings', {})
-        self._scaling = kwargs.pop('Scaling', None)
+        super().__init__(*args)
+        self._addrs = kwargs.pop("Addresses", None)
+        self._scalings = kwargs.pop("Scalings", {})
+        self._scaling = kwargs.pop("Scaling", None)
 
     @property
     def Addresses(self):
@@ -954,6 +1059,7 @@ class ExtParam(LogParam):
             else None
         )
 
+
 class SwitchParam(StdParam):
     "Switch Parameter"
 
@@ -966,9 +1072,10 @@ class SwitchParam(StdParam):
         descriptions for correct types.
         """
         kw = {
-            x: kwargs.pop(x) for x in ['ECUByteIndex', 'ECUBit', 'Addresses']
+            x: kwargs.pop(x) for x in ["ECUByteIndex", "ECUBit", "Addresses"]
         }
-        super(SwitchParam, self).__init__(*args, **kw)
+        super().__init__(*args, **kw)
+
 
 class DTCParam(LogParam):
     "Diagnostic Trouble Codes"
@@ -982,7 +1089,7 @@ class DTCParam(LogParam):
         descriptions for correct types.
         """
         self._tempaddr, self._memaddr = args[-2:]
-        super(DTCParam, self).__init__(*args[:-2])
+        super().__init__(*args[:-2])
 
     @property
     def TempAddr(self):

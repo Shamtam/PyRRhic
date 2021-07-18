@@ -20,13 +20,14 @@ from pubsub import pub
 from .panelsBase import bLoggerGaugePanel
 from .GaugePanel import GaugePanel
 
+
 class LoggerGaugePanel(bLoggerGaugePanel):
-    def __init__(self, *args):
-        super(LoggerGaugePanel, self).__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._gauge_map = {}
 
-        pub.subscribe(self.update_gauges, 'logger.query.updated')
-        pub.subscribe(self.refresh_gauges, 'logger.params.updated')
+        pub.subscribe(self.update_gauges, 'comms.logquery.updated')
+        pub.subscribe(self.refresh_gauges, 'comms.logparams.updated')
 
     def update_gauges(self, params):
 

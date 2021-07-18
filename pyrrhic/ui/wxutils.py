@@ -28,7 +28,7 @@ class WxEventLogHandler(Handler):
     """
 
     def __init__(self, parent, formatter=None):
-        super(WxEventLogHandler, self).__init__()
+        super().__init__()
         self._parent = parent
         self.setFormatter(
             formatter

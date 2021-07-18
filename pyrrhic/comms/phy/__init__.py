@@ -16,20 +16,23 @@
 from ... import _debug
 from .j2534 import phys as j2534_phys
 
+
 def get_all_interfaces():
     """Get all interfaces available on the system.
 
-    Returns a `dict` with {`str`: `set`} key-val pairs, where the keys
-    are the name of each interface on the machine, and the values are
-    a `set` of the valid `CommunicationDevice` subclasses supported by
-    the given interface.
+    Returns:
+        ``dict``: mapping of the name of each interface on the machine
+        (``str``) to a ``set`` of :class:`.CommunicationDevice` subclasses
+        supported by the given interface.
     """
     ifaces = {}
 
     ifaces.update(j2534_phys)
 
     if _debug:
-        from ...tests.comms.phy.phy_mock import MockDevice
-        ifaces.update({'Mock Interface': set([MockDevice])})
+
+        from .mock_phy import MockDevice
+
+        ifaces.update({"Mock Interface": set([MockDevice])})
 
     return ifaces

@@ -19,7 +19,7 @@ from .panelsBase import bGaugePanel
 
 class GaugePanel(bGaugePanel):
     def __init__(self, parent, param):
-        super(GaugePanel, self).__init__(parent)
+        super().__init__(parent)
         self._param = param
         self._param_label.SetLabelText(param.Name)
         self._value_text.SetLabelText('-')

@@ -13,9 +13,23 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .ssm_mock import MockSSM
-from ....comms.protocol.ssm import SSMTranslator
+from .panelsBase import bScalingPanel
 
-_protocols = {
-    'Mock SSM': (MockSSM, SSMTranslator)
-}
+
+class ScalingPanel(bScalingPanel):
+    def __init__(self, parent):
+        super().__init__(parent)
+
+    def populate(self, scaling):
+        self.Freeze()
+
+        self._id_box.SetValue(scaling.name)
+        self._units_box.SetValue(scaling.units)
+
+        expr = scaling.expression
+        if isinstance(expr, str):
+            self._expr_box.SetValue(expr)
+        elif isinstance(expr, dict):
+            
+
+        self.Thaw()

@@ -13,23 +13,22 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import wx
+import os
+import sys
+import unittest
 
-from .wxutils import modal_dialog_ok
+sys.path.append(".")
 
-class BaseFrame(wx.Frame):
-    def __init__(self, *args, **kwargs):
-        super(BaseFrame, self).__init__(*args, **kwargs)
+from pyrrhic.common.definitions import load_ecuflash_repository  # noqa:E402
 
-    def info_box(self, title, message):
-        modal_dialog_ok(self, title, message, wx.ICON_INFORMATION)
 
-    def warning_box(self, title, message):
-        modal_dialog_ok(self, title, message, wx.ICON_WARNING)
+class TestECUFlashDefs(unittest.TestCase):
+    def setUp(self):
+        self.repo_path = os.path.join(os.path.dirname(__file__), "data")
 
-    def error_box(self, title, message):
-        modal_dialog_ok(self, title, message, wx.ICON_ERROR)
+    def test_load_repo(self):
+        xml_tree, cal_tree, id_tree = load_ecuflash_repository(self.repo_path)
 
-    @property
-    def Controller(self):
-        return self._controller
+
+if __name__ == "__main__":
+    unittest.main()

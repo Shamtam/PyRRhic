@@ -188,7 +188,7 @@ class ColorPreference(PyrrhicPreference):
 
 class EnumPreference(PyrrhicPreference):
     def __init__(self, name, choices, values=None, value=0, **kwargs):
-        super(EnumPreference, self).__init__(name, value=value, **kwargs)
+        super().__init__(name, value=value, **kwargs)
         self._choices = choices
         self._values = values if values else range(len(choices))
 
@@ -280,7 +280,7 @@ _default_prefs = [
 
 class PreferenceDecoder(json.JSONDecoder):
     def decode(self, s):
-        in_dict = super(PreferenceDecoder, self).decode(s)
+        in_dict = super().decode(s)
         out_dict = {x.Name:x for x in _default_prefs}
 
         for pref in in_dict:

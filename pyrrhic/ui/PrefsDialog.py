@@ -16,6 +16,7 @@
 import logging
 import wx
 
+from pubsub import pub
 from wx import propgrid as pg
 
 from .base import PrefsDialog as bPrefsDialog
@@ -46,14 +47,15 @@ _fileprop_style_map = {
     'openmulti': wx.FD_OPEN | wx.FD_MULTIPLE,
 }
 
+
 class PrefsDialog(bPrefsDialog):
     def __init__(self, parent, prefMgr):
-        super(PrefsDialog, self).__init__(parent)
+        super().__init__(parent)
         self._prefs = prefMgr
 
-        self._initialize()
+        pub.subscribe(self._initialize, 'controller.init')
 
-    def _initialize(self):
+    def _initialize(self, controller):
         "Initialize PropertyGrid from the associated `PyrrhicPreferences` instance"
 
         for name in self._prefs:
@@ -145,7 +147,7 @@ class PrefsDialog(bPrefsDialog):
             )
             pref.Value = prop.GetValue()
 
-        self.Parent.Controller.process_preferences()
+        self._controller.process_preferences()
         self.Hide()
 
     def OnCancel(self, event):

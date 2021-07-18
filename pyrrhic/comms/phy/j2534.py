@@ -126,7 +126,7 @@ class J2534PassThru_ISO9141(J2534PassThru):
         See `J2534PassThru` base class for description `args` and `kwargs`.
         """
         baud = kwargs.pop('baud', 4800)
-        super(J2534PassThru_ISO9141, self).__init__(
+        super().__init__(
             interface_name, ProtocolID.ISO9141, baud, **kwargs
         )
 

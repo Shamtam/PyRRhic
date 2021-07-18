@@ -39,7 +39,7 @@ class CommsState(IntFlag):
 
 class CommsWorker(PyrrhicWorker):
     def __init__(self, interface_name, phy, protocol, **kwargs):
-        super(CommsWorker, self).__init__()
+        super().__init__()
         self._protocol = protocol(interface_name, phy)
         self._interface = self._protocol.Interface
         self._state = CommsState.UNDEFINED

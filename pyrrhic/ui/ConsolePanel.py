@@ -24,7 +24,7 @@ from .wxutils import WxEventLogHandler, EVT_LOG
 
 class ConsolePanel(bConsolePanel):
     def __init__(self, *args, **kwargs):
-        super(ConsolePanel, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._handler = WxEventLogHandler(self, _console_formatter)
         getLogger().addHandler(self._handler)
         self._handler.setLevel(INFO)
@@ -32,6 +32,11 @@ class ConsolePanel(bConsolePanel):
         self._log_level.SetSelection(log_lvl)
 
         self.Bind(EVT_LOG, self.OnLogRecord)
+
+        pub.subscribe(self._initialize, 'controller.init')
+
+    def _initialize(self, controller):
+        self._controller = controller
 
     def OnLogRecord(self, event):
         rec = event.record
@@ -46,7 +51,7 @@ class ConsolePanel(bConsolePanel):
             DEBUG   : 'DebugLogColor',
         }
 
-        _lvl_to_color = lambda x: self.Parent.Controller.Preferences[_color_pref_map[x]].ValueTuple
+        _lvl_to_color = lambda x: self._controller.Preferences[_color_pref_map[x]].ValueTuple
         style = wx.TextAttr(_lvl_to_color(lvl))
         self._log_text.SetDefaultStyle(style)
         self._log_text.AppendText('{}\n'.format(msg))

@@ -1,0 +1,10 @@
+[flake8]
+exclude =
+    .git,
+    __pycache__,
+
+extend-ignore =
+    # E203: whitespace before ',' -- facilitate block formatting
+    E203,
+    # E221: multiple spaces before operator -- facilitate block formatting
+    E221

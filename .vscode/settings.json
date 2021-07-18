@@ -1,7 +1,6 @@
 {
     "python.pythonPath": "venv\\Scripts\\python.exe",
     "editor.rulers": [
-        72,
         79
     ],
     "files.insertFinalNewline": true,
@@ -13,5 +12,18 @@
     "editor.useTabStops": true,
     "python.analysis.extraPaths": [
         "submodules/PyJ2534"
-    ]
+    ],
+    "python.linting.enabled": true,
+    "restructuredtext.confPath": "${workspaceFolder}\\submodules\\PyJ2534\\docs",
+    "python.formatting.provider": "black",
+    "python.testing.unittestArgs": [
+        "-v",
+        "-s",
+        "./pyrrhic",
+        "-p",
+        "test_*.py"
+    ],
+    "python.testing.pytestEnabled": false,
+    "python.testing.nosetestsEnabled": false,
+    "python.testing.unittestEnabled": true
 }

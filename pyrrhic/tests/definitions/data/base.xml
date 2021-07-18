@@ -1,0 +1,145 @@
+<rom>
+  <romid>
+    <xmlid>BASE</xmlid>
+    <internalidaddress>1234</internalidaddress>
+    <make>PyRRhic</make>
+  </romid>
+
+  <!-- Raw scalings -->
+  <scaling name="raw_float" units="" toexpr="x" frexpr="x" format="%.4f"
+    min="-10000" max="10000" inc="0.00001" storagetype="float" endian="big"
+  />
+  <scaling name="raw_uint32" units="" toexpr="x" frexpr="x" format="%08x"
+    min="0" max="4294967295" inc="1" storagetype="uint32" endian="big"
+  />
+  <scaling name="raw_int32" units="" toexpr="x" frexpr="x" format="%d"
+    min="-2147483648" max="2147483647" inc="1" storagetype="int32" endian="big"
+  />
+  <scaling name="raw_uint16" units="" toexpr="x" frexpr="x" format="%04x"
+    min="0" max="65535" inc="1" storagetype="uint16" endian="big"
+  />
+  <scaling name="raw_int16" units="" toexpr="x" frexpr="x" format="%d"
+    min="-32768" max="32767" inc="1" storagetype="int16" endian="big"
+  />
+  <scaling name="raw_uint8" units="" toexpr="x" frexpr="x" format="%02x"
+    min="0" max="255" inc="1" storagetype="uint8" endian="big"
+  />
+  <scaling name="raw_int8" units="" toexpr="x" frexpr="x" format="%d"
+    min="-128" max="127" inc="1" storagetype="int8" endian="big"
+  />
+
+  <!-- Percent scalings -->
+  <scaling name="pct_float" units="%" toexpr="x" frexpr="x" format="%.2f"
+    min="0" max="100" inc="0.1" storagetype="float" endian="big"
+  />
+  <scaling name="pct_uint32" units="%" toexpr="x/4294967295"
+    frexpr="x*4294967295" format="%.2f" min="0" max="100" inc="0.1"
+    storagetype="uint32" endian="big"
+  />
+  <scaling name="pct_int32" units="%" toexpr="(x+2147483647)/4294967295"
+    frexpr="(x*4294967295)-2147483647" format="%.2f" min="0" max="100"
+    inc="0.1" storagetype="int32" endian="big"
+  />
+  <scaling name="pct_uint16" units="%" toexpr="x/655.35"
+    frexpr="x*655.35" format="%.2f" min="0" max="100" inc="0.1"
+    storagetype="uint16" endian="big"
+  />
+  <scaling name="pct_int16" units="%" toexpr="(x+32768)/655.35"
+    frexpr="(x*655.35)-32768" format="%.2f" min="0" max="100" inc="0.1"
+    storagetype="int16" endian="big"
+  />
+  <scaling name="pct_uint8" units="%" toexpr="x/2.55"
+    frexpr="x*2.55" format="%.2f" min="0" max="100" inc="0.1"
+    storagetype="uint8" endian="big"
+  />
+  <scaling name="pct_int8" units="%" toexpr="(x+128)/2.55"
+    frexpr="(x*2.55)-128" format="%.2f" min="0" max="100" inc="0.1"
+    storagetype="int8" endian="big"
+  />
+
+  <!-- linear scalings -->
+  <scaling name="lin_half" units="" toexpr="x*0.5" frexpr="x*2.0" format="%.3f"
+    min="-100" max="100" inc="0.05" storagetype="float" endian="big"
+  />
+  <scaling name="lin_dbl" units="" toexpr="x*2.0" frexpr="x*0.5" format="%.3f"
+    min="-100" max="100" inc="0.05" storagetype="float" endian="big"
+  />
+
+  <!-- Bloblist -->
+  <scaling name="blob" storagetype="bloblist">
+    <data name="Val_0x01" value="01" />
+    <data name="Val_0x02" value="02" />
+    <data name="Val_0x03" value="03" />
+    <data name="Val_0x04" value="04" />
+  </scaling>
+
+  <!-- Static Base Tables -->
+  <table name="StaticX2D" category="Static Axes Tables" type="2D" level="1" scaling="raw_uint8">
+    <description>Base 2D table stub with a static X axis</description>
+    <table name="X" type="Static X Axis" elements="3">
+      <data>Indep1</data>
+      <data>Indep2</data>
+      <data>Indep3</data>
+    </table>
+  </table>
+  <table name="StaticX3D" category="Static Axes Tables" type="3D" level="1" scaling="raw_uint8">
+    <description>Base 3D table stub with a static X axis</description>
+    <table name="X" type="Static X Axis" elements="3">
+      <data>Indep1</data>
+      <data>Indep2</data>
+      <data>Indep3</data>
+    </table>
+    <table name="Y" type="Y Axis" elements="4" scaling="raw_float" />
+  </table>
+  <table name="StaticY3D" category="Static Axes Tables" type="3D" level="1" scaling="raw_uint8">
+    <description>Base 3D table stub with a static Y axis</description>
+    <table name="X" type="X Axis" elements="4" scaling="raw_float" />
+    <table name="Y" type="Static Y Axis" elements="3">
+      <data>Indep1</data>
+      <data>Indep2</data>
+      <data>Indep3</data>
+    </table>
+  </table>
+  <table name="StaticXY3D" category="Static Axes Tables" type="3D" level="1" scaling="raw_uint8">
+    <description>Base 3D table stub with a static X and Y axes</description>
+    <table name="X" type="Static X Axis" elements="4">
+      <data>Indep1</data>
+      <data>Indep2</data>
+      <data>Indep3</data>
+      <data>Indep4</data>
+    </table>
+    <table name="Y" type="Static Y Axis" elements="3">
+      <data>Indep1</data>
+      <data>Indep2</data>
+      <data>Indep3</data>
+    </table>
+  </table>
+
+  <!-- Defined Base Tables -->
+  <table name="Defined 1D Table" category="Base Tables" address="0001" type="1D" level="1" scaling="raw_uint8">
+    <description>A fully-defined 1D Table in the base definition</description>
+  </table>
+  <table name="Defined 2D Table" category="Base Tables" address="2001" type="2D" level="1" scaling="raw_uint8">
+    <description>A fully-defined 2D Table in the base definition</description>
+    <table name="X" address="2010" type="X Axis" elements="3" scaling="raw_float" />
+  </table>
+  <table name="Defined 3D Table" category="Base Tables" address="3001" type="3D" level="1" scaling="raw_uint8">
+    <description>A fully-defined 3D Table in the base definition</description>
+    <table name="X" address="3010" type="X Axis" elements="3" scaling="raw_float" />
+    <table name="Y" address="3100" type="Y Axis" elements="3" scaling="raw_float" />
+  </table>
+
+  <!-- Partially Defined Base Tables -->
+  <table name="Stub 1D Table" category="Table Stubs" type="1D" level="1" scaling="raw_uint8">
+    <description>A 1D table stub that needs an address to be defined in dependent definitions.</description>
+  </table>
+  <table name="Stub 2D Table" category="Table Stubs" type="2D" level="1" scaling="raw_uint8">
+    <description>A 2D table stub that needs an address to be defined in dependent definitions.</description>
+    <table name="X" type="X Axis" elements="4" scaling="raw_float" />
+  </table>
+  <table name="Stub 3D Table" category="Table Stubs" type="3D" level="1" scaling="raw_uint8">
+    <description>A 3D table stub that needs an address to be defined in dependent definitions.</description>
+    <table name="X" type="X Axis" elements="4" scaling="raw_float" />
+    <table name="Y" type="Y Axis" elements="5" scaling="raw_float" />
+  </table>
+</rom>

@@ -13,17 +13,26 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import re
+
 from .enums import DataType
 
+_ecuflash_format_parse_re = re.compile(
+    r"%(?P<padding>(0\d)|(\d+?))?(\.(?P<precision>\d+?))?(?P<format>[dfx])"
+)
+_rrlogger_format_parse_re = re.compile(r"0(\.(?P<precision>0+))?")
+
+
 def bound_int(dtype, i):
-    """Bound `i` to be within the valid range for the given `dtype`.
+    """Bound a value to be within the valid range for the specified int type.
 
-    Returns the bounded `int`, or `None` if `dtype` is not one of the
-    integer data types specified in `DataType`.
+    Args:
+        dtype (:class:`.DataType`): type of integer
+        i (int): value to be bounded
 
-    Arguments:
-    - `dtype`: `DataType`
-    - `i`: `int` to be bounded
+    Returns:
+        int: the bounded value, or ``None`` if ``dtype`` is not one of the
+        integer data types specified in :class:`.DataType`.
     """
 
     ranges = {
@@ -34,6 +43,7 @@ def bound_int(dtype, i):
         DataType.INT16: (-32768, 32767),
         DataType.INT32: (-2147483648, 2147483647),
     }
+
     if dtype not in ranges:
         return None
     else:

@@ -24,69 +24,91 @@ from ..livetune import LiveTuneState
 from .panelsBase import bRAMTreePanel
 from .ViewModels import RamViewModel, OptionalToggleRenderer
 
+
 class RAMTreePanel(bRAMTreePanel):
     def __init__(self, *args, **kwargs):
-        super(RAMTreePanel, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self._livetune = None
         self._initialized = False
 
         self._base_ram_label = self._RAM_label.GetLabelText()
         self._base_table_label = self._tables_label.GetLabelText()
 
-    def initialize(self, livetune=None):
-        self._livetune = livetune
-        self._model = RamViewModel(self.Parent.Controller, livetune)
-        self._dvc.AssociateModel(self._model)
-        self._model.DecRef()
-
-        _toggle_rend = OptionalToggleRenderer(
-            mode=dv.DATAVIEW_CELL_ACTIVATABLE,
+        self._gauge.SetBorderColor(wx.BLACK)
+        self._gauge.SetBackgroundColour(wx.WHITE)
+        self._gauge.SetBarColor(
+            [wx.Colour(32, 192, 32), wx.Colour(192, 128, 255)]
         )
+        self._gauge.SetBorderPadding(2)
 
-        # determine row/col widths
-        font = self._dvc.GetFont()
-        dc = wx.ScreenDC()
-        dc.SetFont(font)
+        pub.subscribe(self.OnReset, "comms.connection")
+        pub.subscribe(self.OnPending, "livetune.state.pending")
+        pub.subscribe(self.OnPullFailed, "livetune.state.pull.failed")
+        pub.subscribe(self.OnPullComplete, "livetune.state.pull.complete")
+        pub.subscribe(self.OnPushComplete, "livetune.state.push.complete")
+        pub.subscribe(self.refresh_tree, "editor.table.ram.change")
 
-        # get minimal row size for the current font size
-        row_height = dc.GetTextExtent('test')[1]
-        box_width = _toggle_rend.Size
-        del dc
+    def initialize(self, controller=None, livetune=None):
+        if controller and livetune:
+            self._livetune = livetune
+            self._model = RamViewModel(controller, livetune)
+            self._dvc.AssociateModel(self._model)
+            self._model.DecRef()
 
-        self._dvc.SetRowHeight(max(box_width, row_height))
+            _toggle_rend = OptionalToggleRenderer(
+                mode=dv.DATAVIEW_CELL_ACTIVATABLE,
+            )
 
-        _allocate_col = dv.DataViewColumn(
-            '', _toggle_rend, 0, width=box_width*3,
-            align=wx.ALIGN_RIGHT, flags=0
-        )
-        _active_col = dv.DataViewColumn(
-            '', _toggle_rend, 1, width=box_width*3,
-            align=wx.ALIGN_RIGHT, flags=0
-        )
-        self._dvc.AppendColumn(_allocate_col)
-        self._dvc.AppendColumn(_active_col)
+            # determine row/col widths
+            font = self._dvc.GetFont()
+            dc = wx.ScreenDC()
+            dc.SetFont(font)
 
-        self._dvc.AppendTextColumn(
-            'Name',
-            2,
-            align=wx.ALIGN_LEFT,
-            flags=dv.DATAVIEW_COL_RESIZABLE,
-        )
+            # get minimal row size for the current font size
+            row_height = dc.GetTextExtent("test")[1]
+            box_width = _toggle_rend.Size
+            del dc
 
-        self._dvc.GetColumn(2).SetSortOrder(True)
-        self._model.Cleared()
+            self._dvc.SetRowHeight(max(box_width, row_height))
 
-        self._dvc.Enable(False)
+            _allocate_col = dv.DataViewColumn(
+                "",
+                _toggle_rend,
+                0,
+                width=box_width * 3,
+                align=wx.ALIGN_RIGHT,
+                flags=0,
+            )
+            _active_col = dv.DataViewColumn(
+                "",
+                _toggle_rend,
+                1,
+                width=box_width * 3,
+                align=wx.ALIGN_RIGHT,
+                flags=0,
+            )
+            self._dvc.AppendColumn(_allocate_col)
+            self._dvc.AppendColumn(_active_col)
 
-        if livetune:
+            self._dvc.AppendTextColumn(
+                "Name",
+                2,
+                align=wx.ALIGN_LEFT,
+                flags=dv.DATAVIEW_COL_RESIZABLE,
+            )
+
+            self._dvc.GetColumn(2).SetSortOrder(True)
+            self._model.Cleared()
             self._gauge.SetRange(livetune.TotalSize)
 
-        pub.subscribe(self.OnReset, 'logger.connection')
-        pub.subscribe(self.OnPending, 'livetune.state.pending')
-        pub.subscribe(self.OnPullFailed, 'livetune.state.pull.failed')
-        pub.subscribe(self.OnPullComplete, 'livetune.state.pull.complete')
-        pub.subscribe(self.OnPushComplete, 'livetune.state.push.complete')
-        pub.subscribe(self.refresh_tree, 'editor.table.ram.change')
+            self._dvc.Enable()
+            self._pull_but.Enable()
+            self._push_but.Disable()
+
+        else:
+            self._dvc.Disable()
+            self._pull_but.Disable()
+            self._push_but.Disable()
 
     def refresh_tree(self, obj=None):
         # get expanded items
@@ -115,7 +137,7 @@ class RAMTreePanel(bRAMTreePanel):
 
         elif isinstance(node, RamTable):
             if node.RomAddress in self._livetune.RomAddresses:
-                pub.sendMessage('editor.table.toggle', table=node)
+                pub.sendMessage("editor.table.toggle", table=node)
 
     def OnValueChange(self, event=None):
         if self._livetune:
@@ -128,33 +150,42 @@ class RAMTreePanel(bRAMTreePanel):
             pending_allocations = self._livetune.PendingAllocations
 
             if pending_allocations:
-                self._RAM_label.SetLabelText('{} {}/{} ({}/{})'.format(
-                    self._base_ram_label,
-                    used_bytes, total_bytes,
-                    pending_bytes, total_bytes
-                ))
-                table_delta = sum([
-                    1 if x.RamAddress else -1
-                    for x in pending_allocations.values()
-                ])
-                self._tables_label.SetLabelText('{} {} ({})'.format(
-                    self._base_table_label,
-                    num_tables, num_tables + table_delta
-                ))
+                self._RAM_label.SetLabelText(
+                    "{} {}/{} ({}/{})".format(
+                        self._base_ram_label,
+                        used_bytes,
+                        total_bytes,
+                        pending_bytes,
+                        total_bytes,
+                    )
+                )
+                table_delta = sum(
+                    [
+                        1 if x.RamAddress else -1
+                        for x in pending_allocations.values()
+                    ]
+                )
+                self._tables_label.SetLabelText(
+                    "{} {} ({})".format(
+                        self._base_table_label,
+                        num_tables,
+                        num_tables + table_delta,
+                    )
+                )
 
             else:
-                self._RAM_label.SetLabelText('{} {}/{}'.format(
-                    self._base_ram_label,
-                    used_bytes,
-                    total_bytes
-                ))
+                self._RAM_label.SetLabelText(
+                    "{} {}/{}".format(
+                        self._base_ram_label, used_bytes, total_bytes
+                    )
+                )
 
-                self._tables_label.SetLabelText('{} {}'.format(
-                    self._base_table_label,
-                    num_tables
-                ))
+                self._tables_label.SetLabelText(
+                    "{} {}".format(self._base_table_label, num_tables)
+                )
 
-            self._gauge.SetValue(used_bytes)
+            self._gauge.SetValue([used_bytes, pending_bytes])
+            self._gauge.Refresh()
 
             self._push_but.Enable(
                 self._livetune.State & LiveTuneState.WRITE_PENDING
@@ -169,23 +200,24 @@ class RAMTreePanel(bRAMTreePanel):
             self._dvc.Disable()
             self._gauge.SetValue(0)
             self._gauge.SetRange(self._livetune.TotalSize)
+            self._gauge.Refresh()
 
     def OnPullState(self, event=None):
         if self._livetune:
             self._livetune.initialize()
-            pub.sendMessage('livetune.state.pull.init')
+            pub.sendMessage("livetune.state.pull.init")
             self._initialized = False
 
     def OnPushState(self, event=None):
         if self._initialized:
-            pub.sendMessage('livetune.state.push.init')
+            pub.sendMessage("livetune.state.push.init")
 
     def OnPending(self):
         self._pull_but.Disable()
         self._push_but.Disable()
         self._dvc.Disable()
         self._gauge.SetValue(0)
-        self._gauge.Pulse()
+        self._gauge.Refresh()
 
     def OnPullFailed(self):
         self.refresh_tree()
@@ -193,6 +225,7 @@ class RAMTreePanel(bRAMTreePanel):
         self._push_but.Disable()
         self._dvc.Disable()
         self._gauge.SetValue(0)
+        self._gauge.Refresh()
 
     def OnPullComplete(self):
         self.refresh_tree()

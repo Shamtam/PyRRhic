@@ -14,13 +14,11 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import struct
 
 from itertools import groupby
 from PyJ2534 import IoctlParameter, ProtocolFlags
 from time import sleep
 
-from ... import _debug
 from ...common.enums import LoggerEndpoint, LoggerProtocol, _dtype_size_map
 from ...livetune import LiveTuneState, MerpModLiveTune
 from ..phy.j2534 import J2534PassThru_ISO9141
@@ -35,10 +33,11 @@ _ssm_endpoint_map = {
     LoggerEndpoint.TCU : b'\x18',
 }
 
+
 class SSMProtocol(EndpointProtocol):
 
     def __init__(self, *args):
-        super(SSMProtocol, self).__init__(*args)
+        super().__init__(*args)
         self._protocol = LoggerProtocol.SSM
 
     def read_block(self, addr, num_bytes, continuous=False):
@@ -92,6 +91,7 @@ class SSMProtocol(EndpointProtocol):
         """
         raise NotImplementedError
 
+
 class SSM_ISO9141(SSMProtocol):
 
     _supported_phy = set([J2534PassThru_ISO9141])
@@ -110,14 +110,14 @@ class SSM_ISO9141(SSMProtocol):
     def __init__(self, *args, delay=100, timeout=5000):
         # ensure physical interface and protocol are compatible
         phy_cls = args[1]
-        if not phy_cls in self._supported_phy:
+        if phy_cls not in self._supported_phy:
             raise ValueError(
                 'Unsupported physical interface {} for protocol {}'.format(
                     phy_cls.__name__, self.__class__.__name__
                 )
             )
 
-        super(SSM_ISO9141, self).__init__(*args)
+        super().__init__(*args)
         interface_name = args[0]
         self._phy = phy_cls(interface_name, **self._phy_kwargs[phy_cls])
         self._delay = delay
@@ -146,12 +146,12 @@ class SSM_ISO9141(SSMProtocol):
 
         len_byte = bytes([len(data) + 1])
         return self._append_checksum(
-            b'\x80'                 # SSM start byte
-            + _ssm_endpoint_map[dest] # destination byte
-            + b'\xF0'               # source byte
-            + len_byte              # payload length byte
-            + command               # command byte
-            + data                  # payload byte(s)
+            b'\x80'                     # SSM start byte
+            + _ssm_endpoint_map[dest]   # destination byte
+            + b'\xF0'                   # source byte
+            + len_byte                  # payload length byte
+            + command                   # command byte
+            + data                      # payload byte(s)
         )
 
     def _validate_response(self, cmd, resp):
@@ -234,6 +234,7 @@ class SSM_ISO9141(SSMProtocol):
             if len(msg) > 5:
                 return msg[5:-1]
 
+
 class SSMTranslator(EndpointTranslator):
     """SSM fast-poll (continuous read) translator"""
 
@@ -246,7 +247,7 @@ class SSMTranslator(EndpointTranslator):
     _max_write_payload = 0xF6
 
     def __init__(self):
-        super(SSMTranslator, self).__init__()
+        super().__init__()
         self._addr_map = {}
         self._livetune = None
 
@@ -449,9 +450,7 @@ class SSMTranslator(EndpointTranslator):
             verify_kwargs = {'continuous': False}
             verify = (verify_func, verify_args, verify_kwargs)
 
-            check = lambda x: x == chunk_data
-
-            return write, verify, check
+            return write, verify, (lambda x: x == chunk_data)
         else:
             return
 
@@ -521,6 +520,7 @@ class SSMTranslator(EndpointTranslator):
     @property
     def LiveTuneData(self):
         return self._livetune
+
 
 protocols = {
     'SSM (K-line)': (SSM_ISO9141, SSMTranslator)

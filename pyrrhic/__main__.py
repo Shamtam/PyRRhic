@@ -14,32 +14,25 @@
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import os
 import sys
 import wx
 
-from .common import _log_file, _prefs_dir
+from .common import _log_file
 from .common.logging import _file_formatter
-from .ui.EditorFrame import EditorFrame
-from .ui.LoggerFrame import LoggerFrame
+from .ui.PyrrhicFrame import PyrrhicFrame
 from .controller import PyrrhicController
 
 from . import _debug
 
+
 class PyrrhicApp(wx.App):
     def OnInit(self):
-        # TODO: make editor/logger independent based on startup args
-        self.controller = PyrrhicController()
-
-        self.editor_frame = EditorFrame(None, self.controller)
-        self.logger_frame = LoggerFrame(self.editor_frame, self.controller)
-        self.controller.EditorFrame = self.editor_frame
-        self.controller.LoggerFrame = self.logger_frame
-
-        self.SetTopWindow(self.editor_frame)
-        self.editor_frame.Show()
-        self.logger_frame.Show()
+        self.frame = PyrrhicFrame(None)
+        self.controller = PyrrhicController(self.frame)
+        self.SetTopWindow(self.frame)
+        self.frame.Show()
         return True
+
 
 with open(_log_file, 'w') as fp:
 
