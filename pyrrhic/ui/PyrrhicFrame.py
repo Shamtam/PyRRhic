@@ -27,6 +27,7 @@ from .LoggerParamPanel import LoggerParamPanel
 from .LoggerGaugePanel import LoggerGaugePanel
 from .RAMTreePanel import RAMTreePanel
 from .ConsolePanel import ConsolePanel
+from .DefPanel import DefPanel
 from .TablePanel import TablePanel
 from .PrefsDialog import PrefsDialog
 from .wxutils import modal_dialog_ok
@@ -129,12 +130,12 @@ class PyrrhicFrame(wx.Frame):
             aui.AuiPaneInfo()
             .Name("DefPane")
             .Caption("Definitions")
+            .CenterPane()
             .Floatable()
-            .Float()
             .CloseButton()
             .NotebookDockable()
-            .MinSize(400, 400)
-            .Hide()
+            .MinSize(400, 400),
+            target=self._mgr.GetPaneByName("ConsolePane"),
         )
 
         # left pane
@@ -450,7 +451,7 @@ class PyrrhicFrame(wx.Frame):
             enable = False
 
         args = (self._controller, livetune) if enable else ()
-        self._panels['LiveTunePanel'].initialize(*args)
+        self._panels["LiveTunePanel"].initialize(*args)
 
     def _info_box(self, title, message):
         modal_dialog_ok(self, title, message, wx.ICON_INFORMATION)

@@ -601,33 +601,21 @@ class bDefPanel ( wx.Panel ):
         self._dvc = wx.dataview.DataViewCtrl( self, wx.ID_ANY, wx.DefaultPosition, wx.Size( 200,-1 ), 0 )
         self._dvc.SetFont( wx.Font( 9, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, False, wx.EmptyString ) )
 
-        _sizer.Add( self._dvc, wx.GBPosition( 1, 0 ), wx.GBSpan( 2, 1 ), wx.ALL|wx.EXPAND, 2 )
-
-        self._notebook = wx.Simplebook( self, wx.ID_ANY, wx.DefaultPosition, wx.DefaultSize, 0 )
-
-        _sizer.Add( self._notebook, wx.GBPosition( 1, 1 ), wx.GBSpan( 1, 1 ), wx.EXPAND, 2 )
+        _sizer.Add( self._dvc, wx.GBPosition( 1, 0 ), wx.GBSpan( 1, 1 ), wx.ALL|wx.EXPAND, 2 )
 
         self._apply_but = wx.ToggleButton( self, wx.ID_ANY, u"Apply Changes", wx.DefaultPosition, wx.DefaultSize, 0 )
-        _sizer.Add( self._apply_but, wx.GBPosition( 2, 1 ), wx.GBSpan( 1, 1 ), wx.ALL|wx.EXPAND, 5 )
+        _sizer.Add( self._apply_but, wx.GBPosition( 2, 0 ), wx.GBSpan( 1, 1 ), wx.ALL|wx.EXPAND, 5 )
 
 
-        _sizer.AddGrowableCol( 1 )
+        _sizer.AddGrowableCol( 0 )
         _sizer.AddGrowableRow( 1 )
 
         self.SetSizer( _sizer )
         self.Layout()
         _sizer.Fit( self )
 
-        # Connect Events
-        self._dvc.Bind( wx.dataview.EVT_DATAVIEW_SELECTION_CHANGED, self.OnItemSelection, id = wx.ID_ANY )
-
     def __del__( self ):
         pass
-
-
-    # Virtual event handlers, overide them in your derived class
-    def OnItemSelection( self, event ):
-        event.Skip()
 
 
 ###########################################################################
@@ -897,7 +885,7 @@ class bScalingPanel ( wx.Panel ):
         self._pad_label = wx.StaticText( self, wx.ID_ANY, u"Padding", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
         self._pad_label.Wrap( -1 )
 
-        _sizer.Add( self._pad_label, wx.GBPosition( 9, 0 ), wx.GBSpan( 1, 1 ), wx.ALIGN_CENTER_HORIZONTAL|wx.ALIGN_RIGHT|wx.LEFT, 5 )
+        _sizer.Add( self._pad_label, wx.GBPosition( 9, 0 ), wx.GBSpan( 1, 1 ), wx.ALIGN_CENTER_HORIZONTAL|wx.LEFT, 5 )
 
         self._precision_label = wx.StaticText( self, wx.ID_ANY, u"Precision", wx.DefaultPosition, wx.DefaultSize, wx.ALIGN_LEFT )
         self._precision_label.Wrap( -1 )

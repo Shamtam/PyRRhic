@@ -22,9 +22,11 @@ from pubsub import pub
 
 from .helpers import (
     DefinitionContainer,
-    EditorDefContainer,
     LogParamContainer,
     LoggerProtocolContainer,
+    ScalingContainer,
+    CategoryContainer,
+    TableContainer,
     PyrrhicJSONSerializable,
 )
 from .structures import (
@@ -46,13 +48,6 @@ from .enums import (
     _ecuflash_to_dtype_map,
     _rrlogger_to_dtype_map,
 )
-from .helpers import (
-    EditorDefContainer,
-    LoggerDefContainer,
-    ScalingContainer,
-    CategoryContainer,
-    TableContainer,
-)
 from .utils import _ecuflash_format_parse_re, _rrlogger_format_parse_re
 
 _ecuflash_attrib_map = {"inc": "step", "toexpr": "expression"}
@@ -61,6 +56,23 @@ _rrlogger_attrib_map = {
     "gauge_min": "min",
     "gauge_max": "max",
     "gauge_step": "step",
+}
+
+_rominfo_to_display_map = {
+    "ecuid": "ECU ID",
+    "internalid": "Calibration ID",
+    "internalidaddress": "Calibration ID Address",
+    "year": "Year",
+    "market": "Market",
+    "make": "Make",
+    "model": "Model",
+    "submodel": "Sub-model",
+    "transmission": "Transmission",
+    "memmodel": "Memory Model",
+    "flashmethod": "Flash Method",
+    "filesize": "ROM Size",
+    "checksummodule": "Checksum Module",
+    "caseid": "Case ID",
 }
 
 _logger = logging.getLogger(__name__)
@@ -74,12 +86,11 @@ class DefinitionManager(object):
     """Overall container for definitions"""
 
     def initialize_from_legacy(self, ecuflashRoot, rrlogger_path):
-        """Initialize definitions from legacy ECUFlash/RomRaider definitions."""
+        """Initialize from legacy ECUFlash/RomRaider definitions."""
 
         editor_defs = load_ecuflash_repository(ecuflashRoot)
-        logger_defs, logger_scalings = load_rrlogger_file(rrlogger_path)
+        logger_defs = load_rrlogger_file(rrlogger_path)
 
-        # generate combined definition dicts
         self._all_defs = DefinitionContainer(self, name="Definitions")
         self._defs_by_editor_id = DefinitionContainer(
             self, name="Definitions (by Editor ID)"
@@ -88,25 +99,87 @@ class DefinitionManager(object):
             self, name="Definitions (by Logger ID)"
         )
 
-        for (editor_def, editor_scalings) in editor_defs.values():
-            internal_id = editor_def.Identifier
+        # create base definitions first
+        _base_check = lambda x: "base" in x.lower()  # noqa: E731
+        base_editor_defs = list(filter(_base_check, editor_defs.keys()))
+        base_log_defs = {}
+
+        _protocol_map = {"Subaru": LoggerProtocol.SSM}
+
+        for protocol, defs in logger_defs.items():
+            base_logger_defs = list(filter(_base_check, defs.keys()))
+
+            if len(base_logger_defs) != 1:
+                raise RuntimeError(
+                    "Invalid RR Logger def: Protocol must have exactly 1 base"
+                )
+            log_base = defs.pop(base_logger_defs[0])
+            base_log_defs[protocol] = log_base
+
+        # update base editor definitions with logger base info here instead
+        # of instantiating new ROMDefinitions to ensure later definitions
+        # don't lose their link to their parent base definition
+        for base_def_name in base_editor_defs:
+            editor_base = editor_defs.pop(base_def_name)
+
+            # heuristic to choose correct log protocol linked to editor base
+            editor_protocol = _protocol_map[editor_base.Info["make"]]
+            log_base = base_log_defs[editor_protocol]
+
+            # Update editor_base with logger elements
+            editor_base.Scalings.update(log_base.Scalings)
+            editor_base._parameters = log_base.Parameters
+            editor_base._switches = log_base.Switches
+            editor_base._dtcodes = log_base.DTCodes
+            editor_base._parameters.parent = editor_base
+            editor_base._switches.parent = editor_base
+            editor_base._dtcodes.parent = editor_base
+
+            self._all_defs[base_def_name] = editor_base
+            self._defs_by_editor_id[base_def_name] = editor_base
+
+        # iterate over all remaining editor definitions
+        for editor_def in editor_defs.values():
+
+            # info from ECUFlash definition
+            internal_id = editor_def.Info["internalid"]
             ecuid = editor_def.Info["ecuid"]
+            editor_scalings = editor_def.Scalings
+
             romdef = None
 
+            # check if ECU ID exists in RR logger definitions
             for protocol_defs in logger_defs.values():
 
                 # Editor and Logger definitions
                 if ecuid in protocol_defs:
                     logger_def = protocol_defs[ecuid]
+                    logger_scalings = logger_def.Scalings
                     scalings = ScalingContainer(
                         None,
                         data={**editor_scalings, **logger_scalings},
                         name=f"{internal_id}/{ecuid} Scalings",
                     )
-                    romdef = ROMDefinition(editor_def, logger_def, scalings)
+                    romdef = ROMDefinition(
+                        info=editor_def.Info,
+                        parents=editor_def.Parents,
+                        scalings=scalings,
+                        tables=editor_def.Tables,
+                        parameters=logger_def.Parameters,
+                        switches=logger_def.Switches,
+                        dtcodes=logger_def.DTCodes,
+                    )
+                    romdef._parents.parent = romdef
+                    romdef._scalings.parent = romdef
+                    romdef._tables.parent = romdef
+                    romdef._parameters.parent = romdef
+                    romdef._switches.parent = romdef
+                    romdef._dtcodes.parent = romdef
 
                     if ecuid not in self._defs_by_logger_id:
-                        self._defs_by_logger_id[ecuid] = {internal_id: romdef}
+                        self._defs_by_logger_id[ecuid] = DefinitionContainer(
+                            f"{ecuid} Definitions", data={internal_id: romdef}
+                        )
                     else:
                         self._defs_by_logger_id[ecuid][internal_id] = romdef
 
@@ -114,36 +187,36 @@ class DefinitionManager(object):
 
             # Editor-only definitions
             if romdef is None:
-                scalings = ScalingContainer(
-                    None,
-                    data={**editor_scalings},
-                    name=f"{internal_id} Scalings",
+                romdef = ROMDefinition(
+                    info=editor_def.Info,
+                    parents=editor_def.Parents,
+                    scalings=editor_def.Scalings,
+                    tables=editor_def.Tables,
                 )
-                romdef = ROMDefinition(editor_def, None, scalings)
+                romdef._parents.parent = romdef
+                romdef._scalings.parent = romdef
+                romdef._tables.parent = romdef
 
-            scalings.parent = romdef
             self._defs_by_editor_id[internal_id] = romdef
-
-            self._all_defs[f"{internal_id}/{ecuid}"] = romdef
+            self._all_defs[romdef.Identifier] = romdef
 
         # Logger only definitions
-        editor_def = None
-        internal_id = None
         for protocol_defs in logger_defs.values():
-            log_only_defs = (
-                set(protocol_defs.keys()) - set(self._defs_by_logger_id.keys())
+            log_only_defs = set(protocol_defs.keys()) - set(
+                self._defs_by_logger_id.keys()
             )
 
             for ecuid in log_only_defs:
-                logger_def = protocol_defs[ecuid]
-                scalings = ScalingContainer(
-                    None,
-                    data={**logger_scalings},
-                    name=f"{internal_id}/{ecuid} Scalings",
-                )
-                romdef = ROMDefinition(editor_def, logger_def, scalings)
-                scalings.parent = romdef
-                self._all_defs[f"{internal_id}/{ecuid}"] = romdef
+                _logger.warn(f"Ignoring logger-only definition {ecuid}")
+                # logger_def = protocol_defs[ecuid]
+                # scalings = ScalingContainer(
+                #     None,
+                #     data={**logger_scalings},
+                #     name=f"{internal_id}/{ecuid} Scalings",
+                # )
+                # romdef = ROMDefinition(editor_def, logger_def, scalings)
+                # scalings.parent = romdef
+                # self._all_defs[f"{internal_id}/{ecuid}"] = romdef
 
         pub.sendMessage("definitions.init", mgr=self)
 
@@ -165,7 +238,7 @@ class DefinitionManager(object):
         an ``internalidaddress`` (``int``) to a second ``dict``. The second
         level maps the length of the internal id (``int``) to another ``dict``
         keyed by the actual internal id. The final ``dict`` maps the internal
-        id (``bytes``) to the :class:`.EditorDef` instance. If the definition
+        id (``bytes``) to the :class:`.ROMInstance` instance. If the definition
         contains both ``internalidhex`` and ``internalidstring``, the latter is
         ignored and this dictionary uses ``internalidhex`` as the key. This
         nested dictionary can be used to quickly check if a definition exists
@@ -196,31 +269,40 @@ class DefinitionManager(object):
         return self._defs_by_logger_id
 
 
-class EditorDef(object):
-    """Encompasses all ROM-editing portions of a ROM definition."""
+class ROMDefinition(PyrrhicJSONSerializable):
+    """All-encompassing ROM Editor/Logger definition"""
 
-    def __init__(self, identifier, **kwargs):
+    def __init__(self, **kwargs):
         """Initializer.
 
         Use keywords to seed the definition during init.
 
         Args:
-            identifier (str): Unique identification string for this def
             info (dict): Dictionary containing general information about the
                 definition. The only keys considered correspond to elements
                 of the ``<romid>`` tag in an ECUFlash definition.
             parents (:class:`.DefinitionContainer`): Mapping of parent
                 definitions' unique identifiers to their corresponding
-                :class:`.EditorDef` instance
+                :class:`.ROMDefinition` instance
+            scalings (:class:`.ScalingContainer`): Mapping of scaling
+                identifiers to their corresponding :class:`.Scaling` instances
             tables (:class:`.CategoryContainer`): Nested mapping of table
                 definitions. The first level maps category names to a
                 :class:`.TableContainer`, which then maps table names to their
                 corresponding :class:`.TableDef` instance.
+            parameters (:class:`.LogParamContainer`): Mapping of parameter
+                identifiers to their corresponding :class:`.StdParam` or
+                :class:`.ExtParam` instances
+            switches (:class:`.LogParamContainer`): Mapping of switch
+                identifiers to their corresponding :class:`.SwitchParam`
+                instances
+            dtcodes (:class:`.LogParamContainer`): Mapping of logger dtcode
+                identifiers to their corresponding :class:`.DTCParam`
+                instances
         """
-        self._identifier = identifier
+        self._scalings = kwargs.pop("scalings", ScalingContainer(self))
 
         romid_info = kwargs.pop("info", {})
-
         keys = [
             "internalidaddress",
             "internalid",
@@ -244,15 +326,25 @@ class EditorDef(object):
         for key in self._info:
             val = romid_info.pop(key, None)
 
-            if key != "internalid":
+            # enforce upper-case on ECU ID
+            if key == 'ecuid' and isinstance(val, str):
+                val = val.upper()
+
+            if (
+                # use non-ID keys verbatim
+                key != "internalid"
+                # prioritize explicitly defined internalid for ID key
+                or val is not None
+            ):
                 self._info[key] = val
 
+            # no explicit ID, use hex ID next
             else:
-                # prioritize hex ID over string ID
                 val = romid_info.pop("internalidhex", None)
                 if val is not None:
                     self._info[key] = bytes.fromhex(val)
 
+                # finally, fall back to string ID
                 else:
                     val = romid_info.pop("internalidstring", None)
                     if val is not None:
@@ -261,102 +353,16 @@ class EditorDef(object):
         for key in romid_info:
             if key not in ignore_keys:
                 _logger.warn(
-                    f"Ignoring unused rom info `{key}`:`{romid_info[key]}`"
-                    f"supplied on initialization of definition `{identifier}`"
+                    f"Ignoring unused rom info `{key}`:`{romid_info[key]}` "
+                    f"supplied on initialization of definition `{self.Identifier}`"
                 )
 
         self._parents = kwargs.pop(
-            "parents", DefinitionContainer(self, name=f"{identifier} Parents")
+            "parents",
+            DefinitionContainer(self, name=f"{self.Identifier} Parents"),
         )
         self._tables = kwargs.pop(
-            "tables", CategoryContainer(self, name=f"{identifier} Tables")
-        )
-
-    def __repr__(self):
-        return "<EditorDef {}>".format(self._identifier)
-
-    @property
-    def Identifier(self):
-        """Unique ``str`` identifier for editor definition."""
-        return self._identifier
-
-    @property
-    def Info(self):
-        """``dict`` of general ROM information."""
-        return self._info
-
-    @property
-    def DisplayInfo(self):
-        """``dict`` containing user-facing general ROM information."""
-        _disp_map = {
-            "internalidaddress": "Calibration ID Address",
-            "internalid": "Calibration ID",
-            "ecuid": "ECU ID",
-            "year": "Year",
-            "market": "Market",
-            "make": "Make",
-            "model": "Model",
-            "submodel": "Sub-model",
-            "transmission": "Transmission",
-            "memmodel": "Memory Model",
-            "flashmethod": "Flash Method",
-            "filesize": "ROM Size",
-            "checksummodule": "Checksum Module",
-            "caseid": "Case ID",
-        }
-        return {
-            _disp_map[k]: v for k, v in self._info.items() if v is not None
-        }
-
-    @property
-    def Parents(self):
-        """``list`` of :class:``.EditorDef`` this ROM inherits from.
-
-        Order of parents in this list works from innermost to outermost level
-        of hierarchy. For example, if the list resembled the list [``BASE2``,
-        ``BASE1``], then any information contained in ``BASE2`` would override
-        any information contained in ``BASE1``.
-        """
-        return self._parents
-
-    @property
-    def Tables(self):
-        """:class:`.CategoryContainer`, nested mapping of table definitions.
-
-        The first level maps category names to a :class:`.TableContainer`. Each
-        of these containers then maps table names to their corresponding
-        :class:`.TableDef` instance.
-        """
-        return self._tables
-
-
-class LoggerDef(object):
-    "Encompasses all logging portions of a ROM definition"
-
-    def __init__(self, identifier, **kwargs):
-        """Initializer.
-
-        Use keywords to seed the definition during init.
-
-        Args:
-            identifier (str): Unique identification string for this def
-            parents (:class:`.DefinitionContainer`): Mapping of parent
-                definitions' unique logger identifiers to their corresponding
-                :class:`.LoggerDef` instance
-            parameters (:class:`.LogParamContainer`): Mapping of parameter
-                identifiers to their corresponding :class:`.StdParam` or
-                :class:`.ExtParam` instances
-            switches (:class:`.LogParamContainer`): Mapping of switch
-                identifiers to their corresponding :class:`.SwitchParam`
-                instances
-            dtcodes (:class:`.LogParamContainer`): Mapping of logger dtcode
-                identifiers to their corresponding :class:`.DTCParam`
-                instances
-        """
-        self._identifier = identifier
-
-        self._parents = kwargs.pop(
-            "parents", DefinitionContainer(self, name="Parents")
+            "tables", CategoryContainer(self, name=f"{self.Identifier} Tables")
         )
         self._parameters = kwargs.pop(
             "parameters", LogParamContainer(self, name="Logger Parameters")
@@ -369,11 +375,11 @@ class LoggerDef(object):
         )
 
     def __repr__(self):
-        return f"<{self.__class__.__name__} {self._identifier}>"
+        return f"<{self.__class__.__name__}: {self.Identifier}>"
 
-    def resolve_valid_params(self, capabilities):
-        for p in list(self._all_parameters.values()) + list(
-            self._all_switches.values()
+    def resolve_valid_logparams(self, capabilities):
+        for p in list(self._parameters.values()) + list(
+            self._switches.values()
         ):
             if isinstance(p, (StdParam, SwitchParam)):
                 byte_idx = p.ByteIndex
@@ -385,13 +391,60 @@ class LoggerDef(object):
                 if p.Addresses:
                     p.set_supported()
 
+    def to_json(self):
+        # TODO
+        raise NotImplementedError
+
+    def from_json(self):
+        # TODO
+        raise NotImplementedError
+
     @property
     def Identifier(self):
-        return self._identifier
+        """Unique ``str`` identifier."""
+        calid = self._info["internalid"]
+        ecuid = self._info["ecuid"]
+        return f"{ecuid}/{calid}"
+
+    @property
+    def Info(self):
+        """``dict`` of general ROM information."""
+        return self._info
+
+    @property
+    def DisplayInfo(self):
+        """``dict`` containing user-facing general ROM information."""
+        return {
+            _rominfo_to_display_map[k]: v
+            for k, v in self._info.items()
+            if v is not None
+        }
 
     @property
     def Parents(self):
+        """``list`` of :class:``.ROMDefinition`` this ROM inherits from.
+
+        Order of parents in this list works from innermost to outermost level
+        of hierarchy. For example, if the list resembled the list [``BASE2``,
+        ``BASE1``], then any information contained in ``BASE2`` would override
+        any information contained in ``BASE1``.
+        """
         return self._parents
+
+    @property
+    def Scalings(self):
+        """:class:`.ScalingContainer`, mapping of scaling definitions."""
+        return self._scalings
+
+    @property
+    def Tables(self):
+        """:class:`.CategoryContainer`, nested mapping of table definitions.
+
+        The first level maps category names to a :class:`.TableContainer`. Each
+        of these containers then maps table names to their corresponding
+        :class:`.TableDef` instance.
+        """
+        return self._tables
 
     @property
     def Parameters(self):
@@ -404,36 +457,6 @@ class LoggerDef(object):
     @property
     def DTCodes(self):
         return self._dtcodes
-
-
-class ROMDefinition(PyrrhicJSONSerializable):
-    def __init__(self, editor_def=None, logger_def=None, scalings=None):
-        self.editor_def = editor_def
-        self.logger_def = logger_def
-        self.scalings = scalings
-
-    def __repr__(self):
-        return "<{}: {}/{}>".format(
-            self.__class__.__name__,
-            self.EditorID,
-            self.LoggerID,
-        )
-
-    def to_json(self):
-        # TODO
-        raise NotImplementedError
-
-    def from_json(self):
-        # TODO
-        raise NotImplementedError
-
-    @property
-    def EditorID(self):
-        return self.editor_def.Identifier if self.editor_def else None
-
-    @property
-    def LoggerID(self):
-        return self.logger_def.Identifier if self.logger_def else None
 
 
 def _extract_ecuflash_table_datatype_info(table_xml, scaling_xmls):
@@ -691,14 +714,14 @@ def _scaling_from_rrlogger_xml(scaling_xml):
 
 
 def load_ecuflash_repository(directory):
-    """Generate :class:`.EditorDef` instances for an ECUFlash repository.
+    """Generate :class:`.ROMDefinition` instances for an ECUFlash repository.
 
     Args:
         directory (str): absolute path to the top-level of the repository
 
     Returns:
         dict: mapping of a definintion's ``xmlid`` to a 2-tuple containing
-        its correspoding :class:`.EditorDef` instance and a
+        its correspoding :class:`.ROMDefinition` instance and a
         :class:`.ScalingContainer` that holds all locally defined scalings
     """
 
@@ -792,8 +815,8 @@ def load_ecuflash_repository(directory):
         xml_repo[xmlid] = xml_elems
         fpaths[xmlid] = abspath
 
-    # generate EditorDef instances
-    editor_defs = EditorDefContainer(None, name="Editor Definitions")
+    # generate editor ROMDefinition instances
+    editor_defs = DefinitionContainer(None, name="Editor Definitions")
     pending_defs = list(xml_repo.keys())
 
     while pending_defs:
@@ -851,11 +874,14 @@ def load_ecuflash_repository(directory):
                 table = TableDef(table_cont, name, **kw)
                 table_cont[name] = table
 
+        if "base" in current_xml["info"]["xmlid"].lower():
+            current_xml["info"]["internalidstring"] = current_xml["info"]["xmlid"]
+
         # instantiate definition
-        definition = EditorDef(
-            current_id,
+        definition = ROMDefinition(
             info=current_xml["info"],
             parents=parent_cont,
+            scalings=scaling_cont,
             tables=category_cont,
         )
 
@@ -863,7 +889,7 @@ def load_ecuflash_repository(directory):
         parent_cont.parent = definition
         scaling_cont.parent = definition
         category_cont.parent = definition
-        editor_defs[current_id] = (definition, scaling_cont)
+        editor_defs[current_id] = definition
 
     _logger.info("Loaded {} ECUFlash definitions".format(len(editor_defs)))
 
@@ -871,7 +897,7 @@ def load_ecuflash_repository(directory):
 
 
 def load_rrlogger_file(filepath):
-    """Generate :class:`.LoggerDef` instances for a RomRaider logger defs file.
+    """Generate :class:`.ROMDefinition` instances for a RomRaider logger defs file.
 
     Args:
         filepath (str): absolute path to the logger file to parse
@@ -879,7 +905,7 @@ def load_rrlogger_file(filepath):
     Returns:
         tuple: 2-tuple containing logger definitions and all scalings contained
         in the definition file. The tuple is of the form
-        (:class:`.LoggerDefContainer` :class:`.ScalingContainer`).
+        (:class:`.ROMDefinitionContainer` :class:`.ScalingContainer`).
     """
 
     _logger.info(
@@ -920,8 +946,12 @@ def load_rrlogger_file(filepath):
             for param in list(xml_params) + list(xml_ecuparams):
 
                 # handle calculated parameters
+                # TODO: skip these for now...
                 if list(param.iter("depends")):
-                    continue  # TODO: skip these for now...
+                    _logger.warn(
+                        f"Skipping calculated parameter {param.attrib['id']}"
+                    )
+                    continue
 
                 ident = param.attrib["id"]
                 xml_conversions = param.iter("conversion")
@@ -965,7 +995,6 @@ def load_rrlogger_file(filepath):
                             # store ecu-specific parameter info
                             xml_elements[protocol][ecuid]["params"][ident] = {
                                 "param": param,
-                                "scalings": param_scalings,
                                 "addrs": addrs,
                             }
 
@@ -980,11 +1009,11 @@ def load_rrlogger_file(filepath):
         else:
             _logger.warn(f"TODO: Implement logger protocol {protocol}")
 
-    # instantiate LoggerDef instances
+    # instantiate ROMDefinition instances
     logger_defs = LoggerProtocolContainer(None, name="Logger Protocols")
 
     for protocol in xml_elements:
-        protocol_defs = LoggerDefContainer(
+        protocol_defs = DefinitionContainer(
             logger_defs, name=f"{protocol.name} Definitions"
         )
         logger_defs[protocol] = protocol_defs
@@ -1009,7 +1038,7 @@ def load_rrlogger_file(filepath):
                 continue
 
             # parents ordered from inner to outermost hierarchy level
-            parent_cont = LoggerDefContainer(
+            parent_cont = DefinitionContainer(
                 None,
                 data={
                     x: protocol_defs[x]
@@ -1053,13 +1082,18 @@ def load_rrlogger_file(filepath):
                 code = LogParamDef(code_cont, ident, **kw)
                 code_cont[ident] = code
 
-            logger_def = LoggerDef(
-                current_id,
-                parents=parent_cont,
-                parameters=param_cont,
-                switches=switch_cont,
-                dtcodes=code_cont,
-            )
+            kw = {
+                "info": {"ecuid": current_id},  # generate dummy info
+                "parents": parent_cont,
+                "parameters": param_cont,
+                "switches": switch_cont,
+                "dtcodes": code_cont,
+            }
+
+            if "base" in current_id.lower():
+                kw["scalings"] = scaling_cont
+
+            logger_def = ROMDefinition(**kw)
             parent_cont.parent = logger_def
             param_cont.parent = logger_def
             switch_cont.parent = logger_def
@@ -1073,4 +1107,4 @@ def load_rrlogger_file(filepath):
             )
         )
 
-    return logger_defs, scaling_cont
+    return logger_defs

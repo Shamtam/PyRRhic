@@ -38,15 +38,7 @@ class DefinitionContainer(Container):
     pass
 
 
-class EditorDefContainer(Container):
-    pass
-
-
 class LoggerProtocolContainer(Container):
-    pass
-
-
-class LoggerDefContainer(Container):
     pass
 
 
@@ -75,6 +67,8 @@ class ECUFlashSearchTree(Container):
 
 
 class PyrrhicJSONSerializable(object):
+    """Interface to be implemented by JSON-serializable objects"""
+
     def to_json(self):
         return NotImplementedError
 
@@ -131,7 +125,7 @@ class PyrrhicWorker(Thread):
         # arguments if both keys were specified
         if all([x in kwargs for x in ["target", "args"]]):
             kwargs["args"] = (self, *kwargs["args"])
-            self.run = kwargs["target"]
+            self.run_loop = kwargs["target"]
 
         super().__init__(*args, **kwargs)
         self._in_q = Queue()
@@ -140,29 +134,30 @@ class PyrrhicWorker(Thread):
 
         # override run method during initialization
         if "target" in kwargs:
-            self.run = kwargs["target"]
+            self.run_loop = kwargs["target"]
 
     def run(self):
-        """To be implemented in subclasses.
+        """Top-level worker routine loop.
 
-        Use `self._stoprequest` to handle a request to kill the thread.
-        For example, for a thread that should loop indefinitely until
-        it is stopped (or an error occurs), it could look as follows:
-        ```
-            def run(self):
-                while not self._stoprequest.is_set():
-
-                    try:
-                        # handle messages, do stuff...
-
-                    except:
-                        # error occurred, exit thread loop with break
-                        break
-
-                # do stuff after thread task is completed
-        ```
+        Loops the `self.run_loop` while `self._stoprequest` is not set or no
+        unhandled exceptions occur. After the loop is run, `self.post_run` is
+        called.
         """
+        while not self._stoprequest.is_set():
+            try:
+                self.run_inner()
+            except Exception as e:  # noqa: F841
+                break
+
+        self.post_run()
+
+    def run_loop(self):
+        """Main worker routine loop, to be implemented in subclasses."""
         raise NotImplementedError
+
+    def post_run(self):
+        """Function to be run before worker exit, override in subclasses."""
+        pass
 
     def join(self, timeout=None):
         self._stoprequest.set()

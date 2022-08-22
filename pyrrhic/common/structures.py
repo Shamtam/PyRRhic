@@ -222,8 +222,8 @@ class TableDef(PyrrhicJSONSerializable):
             return None
 
     @property
-    def EditorDef(self):
-        """The :class:`.EditorDef` that contains this table's definition."""
+    def ROMDefinition(self):
+        """The :class:`.ROMDefinition` that contains this table's definition."""
 
         # regular tables
         if isinstance(self.parent, TableContainer):
@@ -231,7 +231,7 @@ class TableDef(PyrrhicJSONSerializable):
 
         # axes
         elif isinstance(self.parent, TableDef):
-            return self.parent.EditorDef
+            return self.parent.ROMDefinition
 
     @property
     def Length(self):
@@ -348,8 +348,8 @@ class LogParamDef(PyrrhicJSONSerializable):
         return f"<{type_str} {self.identifier}/{self.name}>"
 
     @property
-    def LoggerDef(self):
-        """The :class:`.LoggerDef` that contains this parameter definition."""
+    def ROMDefinition(self):
+        """The :class:`.ROMDefinition` that contains this parameter definition."""
 
         if isinstance(self.parent, LogParamContainer):
             return self.parent.parent
@@ -384,8 +384,8 @@ class LogDTCDef(PyrrhicJSONSerializable):
         return f"<{self.__class__.__name__} {self.identifier}/{self.name}>"
 
     @property
-    def LoggerDef(self):
-        """The :class:`.LoggerDef` that contains this DTC definition."""
+    def ROMDefinition(self):
+        """The :class:`.ROMDefinition` that contains this DTC definition."""
 
         if isinstance(self.parent, LogParamContainer):
             return self.parent.parent

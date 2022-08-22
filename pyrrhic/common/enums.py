@@ -44,6 +44,27 @@ class DataType(IntEnum):
     STATIC = auto()
 
 
+# native/SI units in comment
+class ValueType(IntEnum):
+    ANGLE = auto()  # degrees
+    CURRENT = auto()  # A
+    FLOW = auto()  # g/s
+    FREQUENCY = auto()  # Hz
+    FUELRATIO = auto()  # lambda
+    LOAD = auto()  # g/rev
+    POWER = auto()  # W
+    PRESSURE = auto()  # Pa
+    RESISTANCE = auto()  # Ohm
+    RPM = auto()  # RPM
+    TEMPERATURE = auto()  # degC
+    TORQUE = auto()  # N-m
+    TIME = auto()  # sec
+    SPEED = auto()  # km/hr ?
+    UNITLESS = auto()  # for multipliers, scalars, mappings, offsets, etc.
+    VOLTAGE = auto()  # V
+    VOLUME = auto()  # L
+
+
 # `None` valued keys shouldn't ever be used
 _dtype_size_map = {
     DataType.BIT0: None,
@@ -109,6 +130,7 @@ _rrlogger_to_dtype_map = {
 
 class TableDataType(IntEnum):
     """Function pointer offsets used in a Subaru ROM table definition"""
+
     DATA_4B = 0x00
     DATA_2B = 0x04
     DATA_1B = 0x08

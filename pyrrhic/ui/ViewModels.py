@@ -20,7 +20,7 @@ from natsort import natsort_key, natsort_keygen, ns
 from pubsub import pub
 from wx import dataview as dv
 
-from ..common.definitions import ROMDefinition, EditorDef, LoggerDef
+from ..common.definitions import ROMDefinition, _rominfo_to_display_map
 from ..common.enums import UserLevel
 from ..common.helpers import (
     CategoryContainer,
@@ -487,9 +487,21 @@ class DefViewModel(dv.PyDataViewModel):
     def __init__(self, defs):
         super().__init__()
         self._defs = defs
+        _info = list(_rominfo_to_display_map.values())
+        _data = [
+            "Parents",
+            "Scalings",
+            "Tables",
+            "Parameters",
+            "Switches",
+            "DTCodes",
+        ]
+        self._columns = _info[:2] + _data + _info[2:]
+        self._info_cols = _info
+        self._data_cols = _data
 
     def GetColumnCount(self):
-        return 1
+        return len(self._columns)
 
     def GetColumnType(self, col):
         return "string"
@@ -502,52 +514,187 @@ class DefViewModel(dv.PyDataViewModel):
                 children.append(self.ObjectToItem(defn))
             return len(self._defs)
 
+        return 0
+
+    def GetAttr(self, item, col, attr):
+        # TODO: set attributes based on edit status
+        return False
+
+    def IsContainer(self, item):
+        # only root is a container
+        return True if not item else False
+
+    def HasDefaultCompare(self):
+        return False
+
+    def Compare(self, item1, item2, column, ascending):
+        node1 = self.ItemToObject(item1)
+        node2 = self.ItemToObject(item2)
+
+        col_name = self._columns[column]
+
+        # sorting by info
+        if col_name in self._info_cols:
+            val1 = node1.DisplayInfo.get(col_name, "")
+            val2 = node2.DisplayInfo.get(col_name, "")
+
+            # convert calid to string before sorting
+            if col_name == "Calibration ID":
+                val1 = val1.decode("ascii")
+                val2 = val2.decode("ascii")
+
+            n1 = natsort_key(val1)
+            n2 = natsort_key(val2)
+
+        # sorting by number of data entries
+        else:
+            n1 = len(getattr(node1, col_name))
+            n2 = len(getattr(node2, col_name))
+
+        # if values are equal, sort by ID as recommended by wxPython docs
+        if n1 == n2:
+            return 1 if ascending == (str(item1.ID) > str(item2.ID)) else -1
+        # sort normally if keys not equal
+        else:
+            return 1 if ascending == (n1 > n2) else -1
+
+    def GetParent(self, item):
+        # no hierarchy in this model
+        return dv.NullDataViewItem
+
+    def HasValue(self, item, col):
+        return col in range(len(self._columns))
+
+    def GetValue(self, item, col):
+        assert col in range(
+            len(self._columns)
+        ), "Unexpected column for DefViewModel"
+
+        node = self.ItemToObject(item)
+        col_name = self._columns[col]
+
+        # general definition info
+        if col_name in self._info_cols:
+            val = node.DisplayInfo.get(col_name, "")
+
+            # convert calid to string before returning
+            if col_name == "Calibration ID" and isinstance(val, bytes):
+                val = val.decode("ascii")
+            elif col_name == "Calibration ID Address":
+                val = f"0x{val.upper()}"
+
+        # definition data (parents, scalings, tables, parameters, etc.)
+        else:
+            val = f'{len(getattr(node, col_name)):d}'
+
+        return val
+
+    def SetValue(self, value, item, col):
+        col_name = self._columns[col]
+
+        # only allow changes to info columns
+        if col_name not in self._info_cols:
+            return False
+
         node = self.ItemToObject(item)
 
-        # ROM node, return info and table categories
-        if isinstance(node, ROMDefinition):
+        # TODO: modify ROM definition
+        return False
 
-            out_nodes = []
+    @property
+    def Columns(self):
+        """List of columns mapped in this view model"""
+        return self._columns
 
-            if node.editor_def:
-                out_nodes.append(node.editor_def)
+    @property
+    def EditableColumns(self):
+        """List of columns that can be user-edited"""
+        return self._info_cols
 
-            if node.logger_def:
-                out_nodes.append(node.logger_def)
+    @property
+    def ViewOnlyColumns(self):
+        """List of columns that are read-only"""
+        return self._data_cols
 
-            if node.scalings:
-                out_nodes.append(node.scalings)
+class TableDefViewModel(dv.PyDataViewModel):
+    """``wx.dv.PyDataViewModel`` for :class:`.TableDef` instances."""
 
-            for x in out_nodes:
-                children.append(self.ObjectToItem(x))
+    def __init__(self, defs):
+        super().__init__()
+        self._defs = defs
+        _info = list(_rominfo_to_display_map.values())
+        _data = [
+            "Parents",
+            "Scalings",
+            "Tables",
+            "Parameters",
+            "Switches",
+            "DTCodes",
+        ]
+        self._columns = _info[:2] + _data + _info[2:]
+        self._info_cols = _info
+        self._data_cols = _data
 
-            return len(out_nodes)
+    def GetColumnCount(self):
+        return len(self._columns)
 
-        elif isinstance(node, EditorDef):
+    def GetColumnType(self, col):
+        return "string"
 
-            # generate table nodes
-            children.append(self.ObjectToItem(node.Tables))
-            return 1
+    def GetChildren(self, item, children):
 
-        elif isinstance(node, LoggerDef):
-            # generate parameter, switch, and DTC nodes
-            children.append(self.ObjectToItem(node.Parameters))
-            children.append(self.ObjectToItem(node.Switches))
-            children.append(self.ObjectToItem(node.DTCodes))
-            return 3
+        # root node, return all definitions
+        if not item:
+            for defn in self._defs.values():
+                children.append(self.ObjectToItem(defn))
+            return len(self._defs)
 
-        elif isinstance(
-            node,
-            (
-                ScalingContainer,
-                CategoryContainer,
-                TableContainer,
-                LogParamContainer,
-            ),
-        ):
-            for x in node.values():
-                children.append(self.ObjectToItem(x))
-            return len(node)
+        # node = self.ItemToObject(item)
+
+        # # ROM node, return info and table categories
+        # if isinstance(node, ROMDefinition):
+
+        #     out_nodes = []
+
+        #     if node.editor_def:
+        #         out_nodes.append(node.editor_def)
+
+        #     if node.logger_def:
+        #         out_nodes.append(node.logger_def)
+
+        #     if node.scalings:
+        #         out_nodes.append(node.scalings)
+
+        #     for x in out_nodes:
+        #         children.append(self.ObjectToItem(x))
+
+        #     return len(out_nodes)
+
+        # elif isinstance(node, EditorDef):
+
+        #     # generate table nodes
+        #     children.append(self.ObjectToItem(node.Tables))
+        #     return 1
+
+        # elif isinstance(node, LoggerDef):
+        #     # generate parameter, switch, and DTC nodes
+        #     children.append(self.ObjectToItem(node.Parameters))
+        #     children.append(self.ObjectToItem(node.Switches))
+        #     children.append(self.ObjectToItem(node.DTCodes))
+        #     return 3
+
+        # elif isinstance(
+        #     node,
+        #     (
+        #         ScalingContainer,
+        #         CategoryContainer,
+        #         TableContainer,
+        #         LogParamContainer,
+        #     ),
+        # ):
+        #     for x in node.values():
+        #         children.append(self.ObjectToItem(x))
+        #     return len(node)
 
         return 0
 
@@ -584,101 +731,78 @@ class DefViewModel(dv.PyDataViewModel):
         # root is a container
         if not item:
             return True
-
-        node = self.ItemToObject(item)
-
-        return (
-            True
-            if isinstance(
-                node, (ROMDefinition, EditorDef, LoggerDef, Container)
-            )
-            else False
-        )
+        else:
+            return False
 
     def HasDefaultCompare(self):
-        return True
+        return False
 
     def Compare(self, item1, item2, column, ascending):
         node1 = self.ItemToObject(item1)
         node2 = self.ItemToObject(item2)
-        nodes = [node1, node2]
 
-        # sort ROMDefinitions by editor/logger ids
-        if all(isinstance(x, ROMDefinition) for x in nodes):
-            if all([x.editor_def is not None for x in nodes]):
-                n1 = natsort_key(node1.editor_def.Identifier)
-                n2 = natsort_key(node2.editor_def.Identifier)
-            elif all([x.logger_def is not None for x in nodes]):
-                n1 = natsort_key(node1.logger_def.Identifier)
-                n2 = natsort_key(node2.logger_def.Identifier)
+        col_name = self._columns[column]
 
-            # placeholder
-            else:
-                return 1 if ascending == (node1.logger_def is None) else -1
+        # sorting by info
+        if col_name in self._info_cols:
+            val1 = node1.DisplayInfo.get(col_name, "")
+            val2 = node2.DisplayInfo.get(col_name, "")
 
-        # sort categories alphabetically
-        elif all(isinstance(x, Container) for x in nodes):
-            n1 = natsort_key(node1.name)
-            n2 = natsort_key(node2.name)
+            # convert calid to string before sorting
+            if col_name == "Calibration ID":
+                val1 = val1.decode("ascii")
+                val2 = val2.decode("ascii")
 
-        # differing node types, sort in particular order
-        elif type(node1).__name__ != type(node2).__name__:
-            _order_map = {
-                "ROMDefinition": 1,
-                "EditorDef": 2,
-                "LoggerDef": 3,
-                "ScalingContainer": 4,
-                "TableCategoryContainer": 5,
-                "TableContainer": 6,
-                "Scaling": 7,
-                "TableDef": 8,
-            }
-            n1 = _order_map.get(type(node1).__name__, -1)
-            n2 = _order_map.get(type(node2).__name__, -1)
+            n1 = natsort_key(val1)
+            n2 = natsort_key(val2)
 
+        # sorting by number of data entries
         else:
-            return 0
+            n1 = len(getattr(node1, col_name))
+            n2 = len(getattr(node2, col_name))
 
-        return 1 if ascending == (n1 > n2) else -1
+        # if values are equal, sort by ID as recommended by wxPython docs
+        if n1 == n2:
+            return 1 if ascending == (str(item1.ID) > str(item2.ID)) else -1
+        # sort normally if keys not equal
+        else:
+            return 1 if ascending == (n1 > n2) else -1
 
     def GetParent(self, item):
-
-        # root has no parent
-        if not item:
-            return dv.NullDataViewItem
-
-        node = self.ItemToObject(item)
-        parent = dv.NullDataViewItem
-
-        if isinstance(node, (Container, Scaling, TableDef)):
-            parent = self.ObjectToItem(node.parent)
-
-        return parent
+        # no hierarchy in this model
+        return dv.NullDataViewItem
 
     def HasValue(self, item, col):
-        return col == 0
+        return col in range(len(self._columns))
 
     def GetValue(self, item, col):
-        assert col == 0, "Unexpected column for RomViewModel"
+        assert col in range(
+            len(self._columns)
+        ), "Unexpected column for DefViewModel"
 
         node = self.ItemToObject(item)
+        col_name = self._columns[col]
 
-        if isinstance(node, ROMDefinition):
-            return "{} / {}".format(
-                node.editor_def.Identifier if node.editor_def else "-",
-                node.logger_def.Identifier if node.logger_def else "-",
-            )
+        # general definition info
+        if col_name in self._info_cols:
+            val = node.DisplayInfo.get(col_name, "")
 
-        elif isinstance(node, (Container, Scaling, TableDef)):
-            return node.name
+            # convert calid to string before returning
+            if col_name == "Calibration ID" and isinstance(val, bytes):
+                val = val.decode("ascii")
+            elif col_name == "Calibration ID Address":
+                val = f"0x{val.upper()}"
 
-        elif isinstance(node, EditorDef):
-            return "Editor Definitions"
+        # definition data (parents, scalings, tables, parameters, etc.)
+        else:
+            val = f'{len(getattr(node, col_name)):d}'
 
-        elif isinstance(node, LoggerDef):
-            return "Logger Definitions"
+        return val
 
-        return repr(node)
+    @property
+    def Columns(self):
+        """List of columns mapped in this view model"""
+        return self._columns
 
 
 # TODO: update LoggerDef/viewmodel to use `Container` instead of tuples

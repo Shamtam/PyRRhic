@@ -7,7 +7,11 @@
     "settings": {
         "[markdown]": {
             "editor.wordWrap": "on",
-            "editor.quickSuggestions": false,
+            "editor.quickSuggestions": {
+                "comments": "off",
+                "strings": "off",
+                "other": "off"
+            },
             "files.trimTrailingWhitespace": false,
         },
         "diffEditor.ignoreTrimWhitespace": false,
@@ -26,9 +30,6 @@
         },
         "python.linting.flake8Enabled": true,
         "restructuredtext.linter.disabled": true,
-        "python.formatting.blackArgs": [
-            "-l 79"
-        ]
     },
     "launch": {
         "version": "0.2.0",

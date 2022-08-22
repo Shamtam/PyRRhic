@@ -1,4 +1,4 @@
-#   Copyright (C) 2021  Shamit Som <shamitsom@gmail.com>
+#   Copyright (C) 2022  Shamit Som <shamitsom@gmail.com>
 #
 #   This program is free software: you can redistribute it and/or modify
 #   it under the terms of the GNU Affero General Public License as published
@@ -13,23 +13,14 @@
 #   You should have received a copy of the GNU Affero General Public License
 #   along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from .panelsBase import bScalingPanel
+from datetime import datetime
 
+_years = [str(x) for x in range(1980, datetime.today().year + 2)]
 
-class ScalingPanel(bScalingPanel):
-    def __init__(self, parent):
-        super().__init__(parent)
+_makes = [
+    'Subaru',
+]
 
-    def populate(self, scaling):
-        self.Freeze()
+_models = [
 
-        self._id_box.SetValue(scaling.name)
-        self._units_box.SetValue(scaling.units)
-
-        expr = scaling.expression
-        if isinstance(expr, str):
-            self._expr_box.SetValue(expr)
-        elif isinstance(expr, dict):
-            self._expr_box.SetValue(repr(expr))
-
-        self.Thaw()
+]
